@@ -1,5 +1,3 @@
-# Architecture Design — Conversational Expense & Budget Tracker
-
 ## 1. System Overview
 
 ```
