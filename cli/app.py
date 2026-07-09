@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+try:
+    import readline
+except ImportError:  # pragma: no cover - depends on platform support
+    readline = None
+
 
 BOOT_BANNER = "Cycle: Jun 26 \u2013 Jul 25   (day 10 of 30)"
 
@@ -22,8 +27,10 @@ class BaymaxCli:
         self.pending_action: str | None = None
         self.pending_expense: Expense | None = None
         self.groceries_spent = 243.0
+        self.command_history: list[str] = []
 
     def run(self) -> None:
+        self._configure_input_history()
         print(BOOT_BANNER)
         while True:
             try:
@@ -37,6 +44,7 @@ class BaymaxCli:
 
             if not raw:
                 continue
+            self._remember_command(raw)
             if raw.lower() in {"exit", "quit"}:
                 break
 
@@ -44,6 +52,8 @@ class BaymaxCli:
                 print(line)
 
     def handle(self, raw: str) -> list[str]:
+        if raw.lower() == "history":
+            return self._format_history()
         if self.pending_action == "choose_learning_goal":
             return self._resolve_learning_goal(raw)
         if self.pending_action == "choose_family_trip_goal":
@@ -270,6 +280,29 @@ class BaymaxCli:
 
     def _format_category(self, category: str | None) -> str:
         return f"  [{category}]" if category else ""
+
+    def _configure_input_history(self) -> None:
+        if readline is None:
+            return
+
+        readline.clear_history()
+        doc = readline.__doc__ or ""
+        if "libedit" in doc:
+            readline.parse_and_bind("bind -e")
+            readline.parse_and_bind(r'bind "\e[A" ed-prev-history')
+            readline.parse_and_bind(r'bind "\e[B" ed-next-history')
+            return
+
+        readline.parse_and_bind("set editing-mode emacs")
+        readline.parse_and_bind(r'"\e[A": previous-history')
+        readline.parse_and_bind(r'"\e[B": next-history')
+
+    def _remember_command(self, raw: str) -> None:
+        self.command_history.append(raw)
+
+    def _format_history(self) -> list[str]:
+        width = len(str(len(self.command_history)))
+        return [f"{index:>{width}}  {command}" for index, command in enumerate(self.command_history, start=1)]
 
 
 def main() -> None:

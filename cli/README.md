@@ -7,6 +7,27 @@ Cycle: Jun 26 – Jul 25   (day 10 of 30)
 ```
 That's it. No summary, no "you have 3 budgets," nothing until asked — the agent starts quiet.
 
+## Session history
+
+The REPL keeps command history for the current session.
+
+```
+> $45 groceries
+✓ $45.00 — groceries  [Groceries]
+
+> report groceries
+Groceries — Jun 26–Jul 25
+  $403 of $400 (101%) · 15 expenses · avg $26.87
+  Largest: Costco $91, Whole Foods $64, Trader Joe's $58
+
+> history
+1  $45 groceries
+2  report groceries
+3  history
+```
+
+Use the up arrow to recall previous commands and the down arrow to move forward through the session history, like a shell.
+
 ## The core loop: minimal log
 
 ```
