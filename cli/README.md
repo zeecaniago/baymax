@@ -139,7 +139,7 @@ After this, groceries can keep being logged all cycle with no more pings — the
 Groceries: $403.00 of $400 (101%) — 15 expenses
 
 > what's left in eating out?
-$45.00 left of $150
+Eating Out doesn't have a budget this cycle.
 
 > what did we put toward the resilient kid goal this cycle?
 $90.00 across 2 expenses — karate class $50, books $40
@@ -153,6 +153,32 @@ Last 3 cycles: $380, $410, $395 — avg $395
 Suggest $400/cycle. Set it?
 > yes
 ✓ Groceries budget set to $400/cycle
+```
+
+## Setting budgets
+
+Create a new category with a budget:
+```
+> set groceries budget to $600
+✓ Created [Groceries] — budget $600/cycle
+```
+
+Existing category that had no budget:
+```
+> set eating out budget to $150
+✓ [Eating Out] budget set to $150/cycle
+```
+
+Changing an existing budget:
+```
+> set groceries budget to $600
+✓ [Groceries] budget updated: $600/cycle (was $400/cycle)
+```
+
+Removing a budget entirely:
+```
+> remove groceries budget
+✓ [Groceries] — budget removed (was $600/cycle)
 ```
 
 ## Reports
