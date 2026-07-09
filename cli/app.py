@@ -10,6 +10,7 @@ except ImportError:  # pragma: no cover - depends on platform support
 
 
 BOOT_BANNER = "Cycle: Jun 26 \u2013 Jul 25   (day 10 of 30)"
+MISSING = object()
 
 
 @dataclass
@@ -26,8 +27,11 @@ class BaymaxCli:
         self.last_expense: Expense | None = None
         self.pending_action: str | None = None
         self.pending_expense: Expense | None = None
+        self.pending_budget_category: str | None = None
+        self.pending_budget_amount: float | None = None
         self.groceries_spent = 243.0
         self.command_history: list[str] = []
+        self.category_budgets: dict[str, float | None] = {"Eating Out": None}
 
     def run(self) -> None:
         self._configure_input_history()
@@ -58,21 +62,34 @@ class BaymaxCli:
             return self._resolve_learning_goal(raw)
         if self.pending_action == "choose_family_trip_goal":
             return self._resolve_family_trip_goal(raw)
-        if self.pending_action == "set_groceries_budget":
+        if self.pending_action == "confirm_budget_change":
             return self._resolve_budget_confirmation(raw)
+
+        budget_set_match = re.fullmatch(
+            r"set\s+(.+?)\s+budget\s+to\s+\$(\d+(?:\.\d{1,2})?)",
+            raw,
+            re.IGNORECASE,
+        )
+        if budget_set_match:
+            category = self._normalize_category_name(budget_set_match.group(1))
+            amount = float(budget_set_match.group(2))
+            return self._set_category_budget(category, amount)
+
+        budget_remove_match = re.fullmatch(r"remove\s+(.+?)\s+budget", raw, re.IGNORECASE)
+        if budget_remove_match:
+            category = self._normalize_category_name(budget_remove_match.group(1))
+            return self._remove_category_budget(category)
 
         lowered = raw.lower()
 
         if lowered == "suggest a groceries budget":
-            self.pending_action = "set_groceries_budget"
+            self.pending_action = "confirm_budget_change"
+            self.pending_budget_category = "Groceries"
+            self.pending_budget_amount = 400.0
             return ["Last 3 cycles: $380, $410, $395 \u2014 avg $395", "Suggest $400/cycle. Set it?"]
 
         if lowered == "report groceries":
-            return [
-                "Groceries \u2014 Jun 26\u2013Jul 25",
-                "  $403 of $400 (101%) \u00b7 15 expenses \u00b7 avg $26.87",
-                "  Largest: Costco $91, Whole Foods $64, Trader Joe's $58",
-            ]
+            return self._report_groceries()
 
         if lowered == "report goal resilient kid":
             return [
@@ -82,10 +99,10 @@ class BaymaxCli:
             ]
 
         if lowered == "how much on groceries this cycle?":
-            return ["Groceries: $403.00 of $400 (101%) \u2014 15 expenses"]
+            return [self._groceries_cycle_summary()]
 
         if lowered == "what's left in eating out?":
-            return ["$45.00 left of $150"]
+            return [self._eating_out_balance()]
 
         if lowered == "what did we put toward the resilient kid goal this cycle?":
             return ["$90.00 across 2 expenses \u2014 karate class $50, books $40"]
@@ -154,8 +171,15 @@ class BaymaxCli:
 
     def _resolve_budget_confirmation(self, raw: str) -> list[str]:
         self.pending_action = None
+        category = self.pending_budget_category
+        amount = self.pending_budget_amount
+        self.pending_budget_category = None
+        self.pending_budget_amount = None
         if raw.strip().lower() in {"y", "yes"}:
-            return ["\u2713 Groceries budget set to $400/cycle"]
+            if category is None or amount is None:
+                return ["Nothing to update."]
+            self.category_budgets[category] = amount
+            return [f"\u2713 {category} budget set to {self._format_currency(amount)}/cycle"]
         return ["No change."]
 
     def _update_last_goal(self, goal: str) -> list[str]:
@@ -186,32 +210,52 @@ class BaymaxCli:
         lines = [self._format_expense(expense)]
 
         if raw.lower() == "$85 groceries":
-            self.groceries_spent = 167.0
-            lines.append("  Groceries: $233 left of $400 this cycle")
+            groceries_budget = self._budget_for("Groceries", default=400.0)
+            if groceries_budget is not None:
+                spent = 167.0
+                lines.append(
+                    f"  Groceries: {self._format_currency(groceries_budget - spent)} left"
+                    f" of {self._format_currency(groceries_budget)} this cycle"
+                )
             return lines
 
         if raw.lower() == "$60 groceries":
-            lines.extend(
-                [
-                    "",
-                    "\u26a0 Groceries \u2014 82% of budget ($328 of $400)",
-                    "   Jun 27  farmers market      $22",
-                    "   Jun 29  Whole Foods         $64",
-                    "   Jul 01  Costco              $91",
-                    "   Jul 03  Trader Joe's        $58",
-                    "   Jul 05  groceries           $60",
-                ]
-            )
+            groceries_budget = self._budget_for("Groceries", default=400.0)
+            if groceries_budget is not None:
+                spent = 328.0
+                percent = round((spent / groceries_budget) * 100)
+                lines.extend(
+                    [
+                        "",
+                        (
+                            f"\u26a0 Groceries \u2014 {percent}% of budget "
+                            f"({self._format_currency(spent)} of {self._format_currency(groceries_budget)})"
+                        ),
+                        "   Jun 27  farmers market      $22",
+                        "   Jun 29  Whole Foods         $64",
+                        "   Jul 01  Costco              $91",
+                        "   Jul 03  Trader Joe's        $58",
+                        "   Jul 05  groceries           $60",
+                    ]
+                )
             return lines
 
         if raw.lower() == "$75 groceries":
-            lines.extend(
-                [
-                    "",
-                    "\u26a0 Groceries \u2014 over budget: $403 of $400 (101%)",
-                    "   [full list]",
-                ]
-            )
+            groceries_budget = self._budget_for("Groceries", default=400.0)
+            if groceries_budget is not None:
+                spent = 403.0
+                percent = round((spent / groceries_budget) * 100)
+                lines.extend(
+                    [
+                        "",
+                        (
+                            f"\u26a0 Groceries \u2014 over budget: "
+                            f"{self._format_currency(spent)} of {self._format_currency(groceries_budget)}"
+                            f" ({percent}%)"
+                        ),
+                        "   [full list]",
+                    ]
+                )
             return lines
 
         if raw.lower().startswith("6/20 $200 car repair"):
@@ -280,6 +324,79 @@ class BaymaxCli:
 
     def _format_category(self, category: str | None) -> str:
         return f"  [{category}]" if category else ""
+
+    def _normalize_category_name(self, raw_category: str) -> str:
+        category = " ".join(raw_category.strip().split())
+        aliases = {
+            "groceries": "Groceries",
+            "eating out": "Eating Out",
+        }
+        return aliases.get(category.lower(), category.title())
+
+    def _set_category_budget(self, category: str, amount: float) -> list[str]:
+        previous_budget = self.category_budgets.get(category, MISSING)
+        self.category_budgets[category] = amount
+
+        if previous_budget is MISSING:
+            return [f"\u2713 Created [{category}] \u2014 budget {self._format_currency(amount)}/cycle"]
+        if previous_budget is None:
+            return [f"\u2713 [{category}] budget set to {self._format_currency(amount)}/cycle"]
+        return [
+            f"\u2713 [{category}] budget updated: {self._format_currency(amount)}/cycle"
+            f" (was {self._format_currency(previous_budget)}/cycle)"
+        ]
+
+    def _remove_category_budget(self, category: str) -> list[str]:
+        previous_budget = self.category_budgets.get(category, MISSING)
+        if previous_budget is MISSING:
+            return [f"No category called [{category}] yet."]
+        if previous_budget is None:
+            return [f"[{category}] doesn't have a budget."]
+
+        self.category_budgets[category] = None
+        return [
+            f"\u2713 [{category}] \u2014 budget removed"
+            f" (was {self._format_currency(previous_budget)}/cycle)"
+        ]
+
+    def _report_groceries(self) -> list[str]:
+        budget = self._budget_for("Groceries", default=400.0)
+        if budget is None:
+            return [
+                "Groceries \u2014 Jun 26\u2013Jul 25",
+                "  $403 spent \u00b7 15 expenses \u00b7 avg $26.87",
+                "  Largest: Costco $91, Whole Foods $64, Trader Joe's $58",
+            ]
+
+        percent = round((403.0 / budget) * 100)
+        return [
+            "Groceries \u2014 Jun 26\u2013Jul 25",
+            f"  {self._format_currency(403.0)} of {self._format_currency(budget)} ({percent}%) \u00b7 15 expenses \u00b7 avg $26.87",
+            "  Largest: Costco $91, Whole Foods $64, Trader Joe's $58",
+        ]
+
+    def _groceries_cycle_summary(self) -> str:
+        budget = self._budget_for("Groceries", default=400.0)
+        if budget is None:
+            return "Groceries: $403.00 \u2014 15 expenses"
+
+        percent = round((403.0 / budget) * 100)
+        return (
+            f"Groceries: $403.00 of {self._format_currency(budget)} ({percent}%)"
+            " \u2014 15 expenses"
+        )
+
+    def _eating_out_balance(self) -> str:
+        budget = self._budget_for("Eating Out")
+        if budget is None:
+            return "Eating Out doesn't have a budget this cycle."
+        return f"{self._format_currency(budget - 105.0)} left of {self._format_currency(budget)}"
+
+    def _budget_for(self, category: str, default: float | None = None) -> float | None:
+        return self.category_budgets.get(category, default)
+
+    def _format_currency(self, amount: float) -> str:
+        return f"${amount:.2f}".rstrip("0").rstrip(".")
 
     def _configure_input_history(self) -> None:
         if readline is None:
