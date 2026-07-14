@@ -7,6 +7,17 @@ Cycle: Jun 26 – Jul 25   (day 10 of 30)
 ```
 That's it. No summary, no "you have 3 budgets," nothing until asked — the agent starts quiet.
 
+## Running against the dummy server
+
+Expense logging now goes through the API server instead of being generated entirely inside the CLI.
+
+1. Start the server:
+   `uvicorn server.app:app --reload`
+2. Start the CLI:
+   `python3 -m cli`
+
+The CLI defaults to `http://127.0.0.1:8000`. Override that with `BAYMAX_API_URL` if needed.
+
 ## Session history
 
 The REPL keeps command history for the current session.

@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from .api import BaymaxApiClient, BaymaxApiError
+
 try:
     import readline
 except ImportError:  # pragma: no cover - depends on platform support
@@ -20,13 +22,16 @@ class Expense:
     category: str | None = None
     flags: list[str] = field(default_factory=list)
     goal: str | None = None
+    expense_id: str | None = None
 
 
 class BaymaxCli:
-    def __init__(self) -> None:
+    def __init__(self, api_client: BaymaxApiClient | None = None) -> None:
+        self.api = api_client or BaymaxApiClient()
         self.last_expense: Expense | None = None
         self.pending_action: str | None = None
         self.pending_expense: Expense | None = None
+        self.pending_expense_draft: dict | None = None
         self.pending_budget_category: str | None = None
         self.pending_budget_amount: float | None = None
         self.groceries_spent = 243.0
@@ -114,9 +119,12 @@ class BaymaxCli:
             return self._update_last_amount(raw)
 
         if "learning goal" in lowered:
-            parsed = self._parse_expense(raw)
+            parsed = self._parse_expense_for_prompt(raw)
+            if parsed is None:
+                return []
             self.pending_action = "choose_learning_goal"
-            self.pending_expense = parsed
+            self.pending_expense = self._expense_from_parse_response(parsed)
+            self.pending_expense_draft = parsed
             return [
                 "Which goal?",
                 "  1. Raise a strong, resilient kid",
@@ -125,9 +133,12 @@ class BaymaxCli:
             ]
 
         if "family trip fund" in lowered:
-            parsed = self._parse_expense(raw)
+            parsed = self._parse_expense_for_prompt(raw)
+            if parsed is None:
+                return []
             self.pending_action = "choose_family_trip_goal"
-            self.pending_expense = parsed
+            self.pending_expense = self._expense_from_parse_response(parsed)
+            self.pending_expense_draft = parsed
             return [
                 'No goal called "family trip fund" yet:',
                 "  1. Save for family trip",
@@ -140,9 +151,8 @@ class BaymaxCli:
     def _resolve_learning_goal(self, raw: str) -> list[str]:
         choice = raw.strip()
         expense = self.pending_expense
-        self.pending_action = None
-        self.pending_expense = None
         if expense is None:
+            self._clear_pending_expense()
             return []
 
         if choice == "1":
@@ -150,15 +160,19 @@ class BaymaxCli:
         elif choice == "2":
             expense.goal = "Get promoted this year"
 
-        self.last_expense = expense
-        return [self._format_expense(expense)]
+        created_expense = self._persist_pending_expense(expense)
+        if created_expense is None:
+            return []
+
+        self.last_expense = created_expense
+        self._clear_pending_expense()
+        return [self._format_expense(created_expense)]
 
     def _resolve_family_trip_goal(self, raw: str) -> list[str]:
         choice = raw.strip()
         expense = self.pending_expense
-        self.pending_action = None
-        self.pending_expense = None
         if expense is None:
+            self._clear_pending_expense()
             return []
 
         if choice == "1":
@@ -166,8 +180,13 @@ class BaymaxCli:
         elif choice == "2":
             expense.goal = "family trip fund"
 
-        self.last_expense = expense
-        return [self._format_expense(expense)]
+        created_expense = self._persist_pending_expense(expense)
+        if created_expense is None:
+            return []
+
+        self.last_expense = created_expense
+        self._clear_pending_expense()
+        return [self._format_expense(created_expense)]
 
     def _resolve_budget_confirmation(self, raw: str) -> list[str]:
         self.pending_action = None
@@ -205,7 +224,10 @@ class BaymaxCli:
         return [self._format_update(self.last_expense)]
 
     def _log_expense(self, raw: str) -> list[str]:
-        expense = self._parse_expense(raw)
+        expense = self._create_expense_from_server(raw)
+        if expense is None:
+            return []
+
         self.last_expense = expense
         lines = [self._format_expense(expense)]
 
@@ -267,42 +289,80 @@ class BaymaxCli:
 
         return lines
 
-    def _parse_expense(self, raw: str) -> Expense:
-        amount_match = re.search(r"\$(\d+(?:\.\d{1,2})?)", raw)
-        amount = float(amount_match.group(1)) if amount_match else 0.0
+    def _parse_expense_for_prompt(self, raw: str) -> dict | None:
+        try:
+            return self.api.parse_expense(raw)
+        except BaymaxApiError as exc:
+            print(exc)
+            return None
 
-        body = re.sub(r"^\d{1,2}/\d{1,2}\s+", "", raw).strip()
-        body = re.sub(r"^\$\d+(?:\.\d{1,2})?\s*", "", body).strip()
-        description = body.split(",")[0].strip()
+    def _create_expense_from_server(self, raw: str) -> Expense | None:
+        try:
+            parsed = self.api.parse_expense(raw)
+            return self._persist_parsed_expense(parsed)
+        except BaymaxApiError as exc:
+            print(exc)
+            return None
 
-        flags = []
-        if "one-off" in raw.lower():
-            flags.append("one-off")
+    def _persist_pending_expense(self, expense: Expense) -> Expense | None:
+        draft = self.pending_expense_draft
+        if draft is None:
+            return expense
+        try:
+            return self._persist_parsed_expense(draft, goal=expense.goal)
+        except BaymaxApiError as exc:
+            print(exc)
+            return None
 
-        category = self._guess_category(description)
-        goal = self._guess_goal(raw)
+    def _persist_parsed_expense(self, parsed: dict, goal: str | None = None) -> Expense:
+        goals = [goal] if goal else []
+        if not goals:
+            goal_candidates = parsed.get("goal_candidates") or []
+            if len(goal_candidates) == 1:
+                goals = [goal_candidates[0]]
 
-        return Expense(amount=amount, description=description, category=category, flags=flags, goal=goal)
+        created = self.api.create_expense(
+            amount=float(parsed["amount"]),
+            description=parsed["description"],
+            category=parsed.get("category"),
+            flags=list(parsed.get("flags") or []),
+            goals=goals,
+            notes=parsed.get("notes"),
+        )
+        return self._expense_from_created_response(created)
 
-    def _guess_category(self, description: str) -> str | None:
-        lowered = description.lower()
-        if "grocer" in lowered:
-            return "Groceries"
-        if "target" in lowered:
-            return "Shopping"
-        if "karate" in lowered or "books" in lowered:
-            return "Kids"
-        if "flight" in lowered:
-            return "Travel"
-        if "car repair" in lowered:
-            return "Auto"
-        return None
+    def _expense_from_parse_response(self, parsed: dict) -> Expense:
+        goals = parsed.get("goal_candidates") or []
+        goal = goals[0] if len(goals) == 1 else None
+        return Expense(
+            amount=float(parsed["amount"]),
+            description=parsed["description"],
+            category=self._normalize_api_category(parsed.get("category")),
+            flags=list(parsed.get("flags") or []),
+            goal=goal,
+        )
 
-    def _guess_goal(self, raw: str) -> str | None:
-        lowered = raw.lower()
-        if "kid goal" in lowered:
-            return "Raise a strong, resilient kid"
-        return None
+    def _expense_from_created_response(self, payload: dict) -> Expense:
+        goals = payload.get("goals") or []
+        goal = goals[0] if goals else None
+        return Expense(
+            amount=float(payload["amount"]),
+            description=payload["description"],
+            category=self._normalize_api_category(payload.get("category")),
+            flags=list(payload.get("flags") or []),
+            goal=goal,
+            expense_id=payload.get("id"),
+        )
+
+    def _normalize_api_category(self, category: str | None) -> str | None:
+        if category is None:
+            return None
+        return self._normalize_category_name(category)
+
+    def _clear_pending_expense(self) -> None:
+        self.pending_action = None
+        self.pending_expense = None
+        self.pending_expense_draft = None
 
     def _format_expense(self, expense: Expense) -> str:
         line = f"\u2713 ${expense.amount:.2f} \u2014 {expense.description}"

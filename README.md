@@ -1,3 +1,94 @@
+## Current Prototype Quickstart
+
+The repo currently contains:
+
+- a dummy FastAPI server in `server/`
+- a Python REPL-style CLI in `cli/`
+
+The server is still in-memory only. It returns dummy data and stores created expenses in process memory only. There is no Postgres/MySQL setup yet.
+
+### 1. Install server dependencies
+
+```bash
+python3 -m pip install -r server/requirements.txt
+```
+
+The CLI currently uses only the Python standard library, so it does not need a separate install step.
+
+### 2. Start the server
+
+In one terminal:
+
+```bash
+uvicorn server.app:app --reload
+```
+
+That starts the dummy API on `http://127.0.0.1:8000`.
+
+### 3. Start the CLI
+
+In a second terminal, from the repo root:
+
+```bash
+python3 -m cli
+```
+
+The CLI talks to `http://127.0.0.1:8000` by default. To point it somewhere else:
+
+```bash
+BAYMAX_API_URL=http://127.0.0.1:9000 python3 -m cli
+```
+
+### 4. Try a few commands
+
+Expense logging now goes through the server:
+
+```text
+> $45 groceries
+✓ $45.00 — groceries  [Groceries]
+
+> $12 coffee, one-off
+✓ $12.00 — coffee  #one-off
+
+> $50 karate class, kid goal
+✓ $50.00 — karate class  [Kids]  → Raise a strong, resilient kid
+```
+
+Ambiguous goal example:
+
+```text
+> $40 books, learning goal
+Which goal?
+  1. Raise a strong, resilient kid
+  2. Get promoted this year
+  3. Don't link to a goal
+> 1
+✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid
+```
+
+Other CLI commands still work locally inside the REPL:
+
+```text
+> report groceries
+Groceries — Jun 26–Jul 25
+  $403 of $400 (101%) · 15 expenses · avg $26.87
+  Largest: Costco $91, Whole Foods $64, Trader Joe's $58
+
+> set groceries budget to $600
+✓ Created [Groceries] — budget $600/cycle
+
+> history
+1  report groceries
+2  set groceries budget to $600
+3  history
+```
+
+### Current behavior split
+
+- Expense parsing and creation go through the server.
+- Reports, budget commands, and most multi-step REPL state still live in the CLI for now.
+- Server data is reset when the server process restarts.
+
 ## 1. System Overview
 
 ```
