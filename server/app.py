@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from datetime import date
+from datetime import date as DateType
 from typing import Literal
 from uuid import uuid4
 
@@ -38,7 +38,7 @@ class CreateExpenseRequest(BaseModel):
     flags: list[str] = Field(default_factory=list)
     goals: list[str] = Field(default_factory=list)
     notes: str | None = None
-    date: date | None = None
+    date: DateType | None = None
     user_id: str | None = None
 
 
@@ -49,7 +49,7 @@ class UpdateExpenseRequest(BaseModel):
     flags: list[str] | None = None
     goals: list[str] | None = None
     notes: str | None = None
-    date: date | None = None
+    date: DateType | None = None
 
 
 class AskRequest(BaseModel):
@@ -237,7 +237,7 @@ def create_expense(payload: CreateExpenseRequest) -> dict:
         "flags": payload.flags,
         "goals": payload.goals,
         "notes": payload.notes,
-        "date": str(payload.date or date.today()),
+        "date": str(payload.date or DateType.today()),
     }
     _DUMMY_EXPENSES.append(expense)
     return expense
