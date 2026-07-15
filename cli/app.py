@@ -204,15 +204,10 @@ class BaymaxCli:
     def _update_last_goal(self, goal: str) -> list[str]:
         if self.last_expense is None:
             return ["Nothing to update."]
-        before = self.last_expense.goal or "No goal"
-        self.last_expense.goal = goal
-        return [
-            f"\u2713 updated \u2014 ${self.last_expense.amount:.2f} \u2014 {self.last_expense.description}"
-            f"{self._format_category(self.last_expense.category)}  \u2192 {before if before != 'No goal' else goal}"
-            if before != "No goal"
-            else f"\u2713 updated \u2014 ${self.last_expense.amount:.2f} \u2014 {self.last_expense.description}"
-            f"{self._format_category(self.last_expense.category)}  \u2192 {goal}"
-        ]
+        updated_expense = self._update_last_expense_on_server(goals=[goal])
+        if updated_expense is None:
+            return []
+        return [self._format_update(updated_expense)]
 
     def _update_last_amount(self, raw: str) -> list[str]:
         if self.last_expense is None:
@@ -220,8 +215,10 @@ class BaymaxCli:
         numbers = [float(match) for match in re.findall(r"\d+(?:\.\d{1,2})?", raw)]
         if not numbers:
             return ["Nothing to update."]
-        self.last_expense.amount = numbers[0]
-        return [self._format_update(self.last_expense)]
+        updated_expense = self._update_last_expense_on_server(amount=numbers[0])
+        if updated_expense is None:
+            return []
+        return [self._format_update(updated_expense)]
 
     def _log_expense(self, raw: str) -> list[str]:
         expense = self._create_expense_from_server(raw)
@@ -330,6 +327,33 @@ class BaymaxCli:
             notes=parsed.get("notes"),
         )
         return self._expense_from_created_response(created)
+
+    def _update_last_expense_on_server(
+        self,
+        *,
+        amount: float | None = None,
+        goals: list[str] | None = None,
+    ) -> Expense | None:
+        expense = self.last_expense
+        if expense is None:
+            return None
+        if expense.expense_id is None:
+            print("Couldn't update the last expense because it was never saved.")
+            return None
+
+        try:
+            updated = self.api.update_expense(
+                expense.expense_id,
+                amount=amount,
+                goals=goals,
+            )
+        except BaymaxApiError as exc:
+            print(exc)
+            return None
+
+        updated_expense = self._expense_from_created_response(updated)
+        self.last_expense = updated_expense
+        return updated_expense
 
     def _expense_from_parse_response(self, parsed: dict) -> Expense:
         goals = parsed.get("goal_candidates") or []

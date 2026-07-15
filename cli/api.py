@@ -42,13 +42,38 @@ class BaymaxApiClient:
         }
         return self._post_json("/expenses", payload)
 
+    def update_expense(
+        self,
+        expense_id: str,
+        *,
+        amount: float | None = None,
+        description: str | None = None,
+        category: str | None = None,
+        flags: list[str] | None = None,
+        goals: list[str] | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "amount": amount,
+            "description": description,
+            "category": category,
+            "flags": flags,
+            "goals": goals,
+            "notes": notes,
+        }
+        updates = {key: value for key, value in payload.items() if value is not None}
+        return self._request_json("PATCH", f"/expenses/{expense_id}", updates)
+
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request_json("POST", path, payload)
+
+    def _request_json(self, method: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
         req = request.Request(
             f"{self.base_url}{path}",
             data=body,
             headers={"Content-Type": "application/json"},
-            method="POST",
+            method=method,
         )
 
         try:
