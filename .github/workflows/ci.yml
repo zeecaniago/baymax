@@ -9,6 +9,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - closed
   push:
     branches:
       - main
@@ -18,6 +19,7 @@ permissions:
 
 jobs:
   lint-and-test:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: .
@@ -66,3 +68,54 @@ jobs:
         with:
           name: coverage-report
           path: ci-artifacts/
+
+  create-release-tag:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out merged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Create semantic version tag
+        shell: bash
+        run: |
+          git fetch --tags --force origin
+
+          if git tag --points-at HEAD --list 'v[0-9]*' | grep --extended-regexp --quiet '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "A semantic version tag already points at this commit; skipping tag creation."
+            exit 0
+          fi
+
+          for attempt in {1..5}; do
+            latest_tag="$(git tag --list | grep --extended-regexp '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort --version-sort | tail --lines=1 || true)"
+
+            if [ -z "${latest_tag}" ]; then
+              tag_name="v0.1.0"
+            else
+              IFS=. read -r major minor patch <<< "${latest_tag#v}"
+              tag_name="v${major}.${minor}.$((patch + 1))"
+            fi
+
+            git tag --annotate "${tag_name}" --message "Release ${tag_name}"
+            if git push origin "refs/tags/${tag_name}"; then
+              echo "Created ${tag_name}."
+              exit 0
+            fi
+
+            git tag --delete "${tag_name}"
+            git fetch --tags --force origin
+
+            if git tag --points-at HEAD --list 'v[0-9]*' | grep --extended-regexp --quiet '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "Another run already tagged this commit; skipping tag creation."
+              exit 0
+            fi
+          done
+
+          echo "Unable to create a semantic version tag after five attempts." >&2
+          exit 1
