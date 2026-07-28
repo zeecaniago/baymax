@@ -52,6 +52,10 @@ class UpdateExpenseRequest(BaseModel):
     date: DateType | None = None
 
 
+class SetBudgetRequest(BaseModel):
+    amount: float = Field(..., ge=0)
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1)
     cycle: str = "current"
@@ -258,6 +262,45 @@ def _budget_category(name: str) -> dict | None:
     return None
 
 
+def _normalized_budget_name(name: str) -> str:
+    return " ".join(name.strip().split()).lower()
+
+
+def _make_budget_category(name: str, budget_amount: float | None) -> dict:
+    spent = 0.0
+    return {
+        "name": _normalized_budget_name(name),
+        "budget_amount": budget_amount,
+        "spent": spent,
+        "remaining": None if budget_amount is None else budget_amount - spent,
+        "expense_count": 0,
+        "average_amount": 0.0,
+        "largest_expenses": [],
+    }
+
+
+def _recalculate_budget_totals() -> None:
+    budgeted = 0.0
+    spent = 0.0
+
+    for category in _DUMMY_BUDGETS["categories"]:
+        budget_amount = category.get("budget_amount")
+        category_spent = float(category.get("spent") or 0.0)
+        if budget_amount is None:
+            category["remaining"] = None
+            continue
+
+        budgeted += float(budget_amount)
+        spent += category_spent
+        category["remaining"] = float(budget_amount) - category_spent
+
+    _DUMMY_BUDGETS["totals"] = {
+        "budgeted": budgeted,
+        "spent": spent,
+        "remaining": budgeted - spent,
+    }
+
+
 def _report_payload(report_type: str, cycle: str) -> dict:
     if report_type == "goal":
         return {"type": report_type, "cycle": cycle, "items": list(_DUMMY_GOALS.values())}
@@ -345,6 +388,49 @@ def list_expenses(
 @app.get("/budgets")
 def get_budgets() -> dict:
     return deepcopy(_DUMMY_BUDGETS)
+
+
+@app.put("/budgets/{category_name}")
+def set_budget(category_name: str, payload: SetBudgetRequest) -> dict:
+    normalized_name = _normalized_budget_name(category_name)
+    category = _budget_category(normalized_name)
+
+    if category is None:
+        category = _make_budget_category(normalized_name, payload.amount)
+        _DUMMY_BUDGETS["categories"].append(category)
+        action = "created"
+        previous_budget = None
+    else:
+        previous_budget = category.get("budget_amount")
+        action = "set" if previous_budget is None or previous_budget == payload.amount else "updated"
+        category["budget_amount"] = payload.amount
+
+    _recalculate_budget_totals()
+    return {
+        "action": action,
+        "category": deepcopy(category),
+        "previous_budget": previous_budget,
+    }
+
+
+@app.delete("/budgets/{category_name}")
+def remove_budget(category_name: str) -> dict:
+    normalized_name = _normalized_budget_name(category_name)
+    category = _budget_category(normalized_name)
+    if category is None:
+        return {"action": "missing", "category_name": normalized_name}
+
+    previous_budget = category.get("budget_amount")
+    if previous_budget is None:
+        return {"action": "already_removed", "category": deepcopy(category)}
+
+    category["budget_amount"] = None
+    _recalculate_budget_totals()
+    return {
+        "action": "removed",
+        "category": deepcopy(category),
+        "previous_budget": previous_budget,
+    }
 
 
 @app.get("/goals/{goal_id}/summary")

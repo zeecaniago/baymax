@@ -105,12 +105,19 @@ Corrections also go through the server:
 ✓ updated — $54.00 — groceries  [Groceries]
 ```
 
+Budget writes also go through the server:
+
+```text
+> set groceries budget to $600
+✓ [Groceries] budget updated: $600/cycle (was $400/cycle)
+
+> remove groceries budget
+✓ [Groceries] — budget removed (was $600/cycle)
+```
+
 Commands that still work locally inside the REPL:
 
 ```text
-
-> set groceries budget to $600
-✓ Created [Groceries] — budget $600/cycle
 
 > history
 1  report groceries
@@ -145,17 +152,21 @@ Use the README as a manual test script while the server is running:
    `> how much on groceries this cycle?`
    `> what's left in eating out?`
    `> what did we put toward the resilient kid goal this cycle?`
-6. Exercise local-only commands:
+6. Exercise server-backed budget writes:
    `> set groceries budget to $600`
    `> remove groceries budget`
+7. Exercise local-only prompt state:
+   `> suggest a groceries budget`
+   `> no`
+8. Exercise local-only commands:
    `> history`
 
 Important current limitation: the read endpoints still serve dummy/static data. Logging a new expense succeeds through the server, but the read outputs above will not yet recompute from the expenses you just logged.
 
 ### Current behavior split
 
-- Expense parsing, creation, correction, reports, goal summaries, budget reads, and question answering go through the server.
-- Budget write commands, budget recommendation prompts, and most multi-step REPL state still live in the CLI for now.
+- Expense parsing, creation, correction, reports, goal summaries, budget reads, budget writes, and question answering go through the server.
+- Budget recommendation prompts and most multi-step REPL state still live in the CLI for now.
 - Server-backed reads are still dummy/static; they do not yet recompute from newly logged expenses.
 - Server data is reset when the server process restarts.
 
