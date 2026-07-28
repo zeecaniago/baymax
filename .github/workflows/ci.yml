@@ -82,6 +82,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
 
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Create semantic version tag
         shell: bash
         run: |
