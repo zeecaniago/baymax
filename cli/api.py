@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
 
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
@@ -21,6 +21,23 @@ class BaymaxApiClient:
 
     def parse_expense(self, raw_text: str) -> dict[str, Any]:
         return self._post_json("/expenses/parse", {"raw_text": raw_text})
+
+    def get_budgets(self) -> dict[str, Any]:
+        return self._get_json("/budgets")
+
+    def get_reports(
+        self,
+        *,
+        report_type: str = "category",
+        cycle: str = "current",
+    ) -> dict[str, Any]:
+        return self._get_json("/reports", {"type": report_type, "cycle": cycle})
+
+    def get_goal_summary(self, goal_id: str, *, cycle: str = "current") -> dict[str, Any]:
+        return self._get_json(f"/goals/{goal_id}/summary", {"cycle": cycle})
+
+    def ask(self, question: str, *, cycle: str = "current") -> dict[str, Any]:
+        return self._post_json("/ask", {"question": question, "cycle": cycle})
 
     def create_expense(
         self,
@@ -67,12 +84,24 @@ class BaymaxApiClient:
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request_json("POST", path, payload)
 
-    def _request_json(self, method: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps(payload).encode("utf-8")
+    def _get_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if params:
+            query = parse.urlencode(params)
+            path = f"{path}?{query}"
+        return self._request_json("GET", path)
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {"Content-Type": "application/json"} if payload is not None else {}
         req = request.Request(
             f"{self.base_url}{path}",
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method=method,
         )
 

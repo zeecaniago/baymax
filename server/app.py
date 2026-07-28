@@ -65,25 +65,86 @@ class AskResponse(BaseModel):
 
 _DUMMY_BUDGETS = {
     "cycle": "current",
+    "cycle_label": "Jun 26–Jul 25",
     "currency": "USD",
     "categories": [
-        {"name": "groceries", "budget_amount": 500, "spent": 182.40, "remaining": 317.60},
-        {"name": "transport", "budget_amount": 150, "spent": 48.75, "remaining": 101.25},
-        {"name": "eating out", "budget_amount": 200, "spent": 63.10, "remaining": 136.90},
+        {
+            "name": "groceries",
+            "budget_amount": 400.0,
+            "spent": 403.0,
+            "remaining": -3.0,
+            "expense_count": 15,
+            "average_amount": 26.87,
+            "largest_expenses": [
+                {"description": "Costco", "amount": 91.0},
+                {"description": "Whole Foods", "amount": 64.0},
+                {"description": "Trader Joe's", "amount": 58.0},
+            ],
+        },
+        {
+            "name": "transport",
+            "budget_amount": 150.0,
+            "spent": 48.75,
+            "remaining": 101.25,
+            "expense_count": 3,
+            "average_amount": 16.25,
+            "largest_expenses": [
+                {"description": "Train reload", "amount": 18.5},
+                {"description": "Bus pass top-up", "amount": 16.25},
+                {"description": "Parking meter", "amount": 14.0},
+            ],
+        },
+        {
+            "name": "eating out",
+            "budget_amount": None,
+            "spent": 105.0,
+            "remaining": None,
+            "expense_count": 6,
+            "average_amount": 17.5,
+            "largest_expenses": [
+                {"description": "Sushi lunch", "amount": 28.0},
+                {"description": "Pizza night", "amount": 24.0},
+                {"description": "Coffee run", "amount": 19.0},
+            ],
+        },
     ],
-    "totals": {"budgeted": 850, "spent": 294.25, "remaining": 555.75},
+    "totals": {"budgeted": 550.0, "spent": 451.75, "remaining": 98.25},
 }
 
 _DUMMY_GOALS = {
+    "goal-resilient-kid": {
+        "id": "goal-resilient-kid",
+        "name": "Raise a strong, resilient kid",
+        "target_amount": None,
+        "target_date": None,
+        "is_open_ended": True,
+        "cycle_contributions": 90.0,
+        "total_contributions": 890.0,
+        "remaining_to_target": None,
+        "cycle_expense_count": 2,
+        "total_expense_count": 14,
+        "since": "Mar 2026",
+        "cycle_entries": [
+            {"description": "karate class", "amount": 50.0},
+            {"description": "books", "amount": 40.0},
+        ],
+    },
     "goal-emergency-fund": {
         "id": "goal-emergency-fund",
         "name": "Emergency Fund",
         "target_amount": 10000,
         "target_date": None,
         "is_open_ended": True,
-        "cycle_contributions": 125,
-        "total_contributions": 2750,
-        "remaining_to_target": 7250,
+        "cycle_contributions": 125.0,
+        "total_contributions": 2750.0,
+        "remaining_to_target": 7250.0,
+        "cycle_expense_count": 3,
+        "total_expense_count": 17,
+        "since": "Jan 2026",
+        "cycle_entries": [
+            {"description": "paycheck transfer", "amount": 75.0},
+            {"description": "bonus sweep", "amount": 50.0},
+        ],
     },
     "goal-japan-trip": {
         "id": "goal-japan-trip",
@@ -91,9 +152,16 @@ _DUMMY_GOALS = {
         "target_amount": 4000,
         "target_date": "2027-05-01",
         "is_open_ended": False,
-        "cycle_contributions": 220,
-        "total_contributions": 980,
-        "remaining_to_target": 3020,
+        "cycle_contributions": 220.0,
+        "total_contributions": 980.0,
+        "remaining_to_target": 3020.0,
+        "cycle_expense_count": 2,
+        "total_expense_count": 6,
+        "since": "Apr 2026",
+        "cycle_entries": [
+            {"description": "flight deposit", "amount": 200.0},
+            {"description": "passport renewal", "amount": 20.0},
+        ],
     },
 }
 
@@ -180,6 +248,14 @@ def _goal_candidates(raw_text: str) -> list[str]:
     if "emergency fund" in lowered or "fund" in lowered:
         return ["Emergency Fund"]
     return []
+
+
+def _budget_category(name: str) -> dict | None:
+    normalized = name.strip().lower()
+    for category in _DUMMY_BUDGETS["categories"]:
+        if category["name"] == normalized:
+            return category
+    return None
 
 
 def _report_payload(report_type: str, cycle: str) -> dict:
@@ -278,20 +354,74 @@ def get_goal_summary(goal_id: str, cycle: str = Query(default="current")) -> dic
         raise HTTPException(status_code=404, detail="Goal not found")
     response = deepcopy(goal)
     response["cycle"] = cycle
+    response["cycle_label"] = _DUMMY_BUDGETS["cycle_label"]
     return response
 
 
 @app.post("/ask", response_model=AskResponse)
 def ask_question(payload: AskRequest) -> AskResponse:
+    question = payload.question.strip()
+    lowered = question.lower()
+
+    if lowered == "how much on groceries this cycle?":
+        groceries = _budget_category("groceries")
+        if groceries is None:
+            raise HTTPException(status_code=500, detail="Groceries summary unavailable")
+        budget_amount = groceries.get("budget_amount")
+        spent = float(groceries.get("spent") or 0.0)
+        count = int(groceries.get("expense_count") or 0)
+        if budget_amount is None:
+            answer = f"Groceries: ${spent:.2f} — {count} expenses"
+        else:
+            percent = round((spent / float(budget_amount)) * 100) if budget_amount else 0
+            answer = (
+                f"Groceries: ${spent:.2f} of ${float(budget_amount):.2f} ({percent}%)"
+                f" — {count} expenses"
+            )
+        return AskResponse(
+            answer=answer,
+            cycle=payload.cycle,
+            supporting_data={
+                "question": question,
+                "category": "groceries",
+                "spent": spent,
+                "budget_amount": budget_amount,
+                "expense_count": count,
+            },
+        )
+
+    if lowered == "what did we put toward the resilient kid goal this cycle?":
+        goal = deepcopy(_DUMMY_GOALS["goal-resilient-kid"])
+        entries = goal.get("cycle_entries") or []
+        details = ", ".join(
+            f"{entry['description']} ${float(entry['amount']):.0f}" for entry in entries
+        )
+        answer = (
+            f"${float(goal['cycle_contributions']):.2f} across "
+            f"{int(goal['cycle_expense_count'])} expenses — {details}"
+        )
+        return AskResponse(
+            answer=answer,
+            cycle=payload.cycle,
+            supporting_data={
+                "question": question,
+                "goal_id": goal["id"],
+                "goal_name": goal["name"],
+                "cycle_contributions": goal["cycle_contributions"],
+                "cycle_entries": entries,
+            },
+        )
+
+    totals = _DUMMY_BUDGETS["totals"]
     return AskResponse(
         answer=(
-            "You have spent $294.25 across budgeted categories this cycle, "
-            "with $555.75 remaining."
+            f"You have spent ${float(totals['spent']):.2f} across budgeted categories this cycle, "
+            f"with ${float(totals['remaining']):.2f} remaining."
         ),
         cycle=payload.cycle,
         supporting_data={
-            "question": payload.question,
-            "budget_totals": _DUMMY_BUDGETS["totals"],
+            "question": question,
+            "budget_totals": totals,
             "top_category": "groceries",
         },
     )

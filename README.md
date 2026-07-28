@@ -41,7 +41,7 @@ BAYMAX_API_URL=http://127.0.0.1:9000 python3 -m cli
 
 ### 4. Try a few commands
 
-Expense logging now goes through the server:
+Expense logging goes through the server:
 
 ```text
 > $45 groceries
@@ -66,13 +66,48 @@ Which goal?
 ✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid
 ```
 
-Other CLI commands still work locally inside the REPL:
+Server-backed read flows:
 
 ```text
 > report groceries
 Groceries — Jun 26–Jul 25
   $403 of $400 (101%) · 15 expenses · avg $26.87
   Largest: Costco $91, Whole Foods $64, Trader Joe's $58
+
+> report goal resilient kid
+Raise a strong, resilient kid
+  This cycle: $90 across 2 expenses
+  All-time: $890 across 14 expenses (since Mar 2026)
+
+> how much on groceries this cycle?
+Groceries: $403.00 of $400.00 (101%) — 15 expenses
+
+> what's left in eating out?
+Eating Out doesn't have a budget this cycle.
+
+> what did we put toward the resilient kid goal this cycle?
+$90.00 across 2 expenses — karate class $50, books $40
+```
+
+Corrections also go through the server:
+
+```text
+> $18 target
+✓ $18.00 — target  [Shopping]
+
+> no, that one's for the emergency fund goal
+✓ updated — $18.00 — target  [Shopping]  → Emergency Fund
+
+> $45 groceries
+✓ $45.00 — groceries  [Groceries]
+
+> oops, 54 not 45
+✓ updated — $54.00 — groceries  [Groceries]
+```
+
+Commands that still work locally inside the REPL:
+
+```text
 
 > set groceries budget to $600
 ✓ Created [Groceries] — budget $600/cycle
@@ -83,10 +118,45 @@ Groceries — Jun 26–Jul 25
 3  history
 ```
 
+### 5. Smoke-test the current workflows
+
+Use the README as a manual test script while the server is running:
+
+1. Parse and save a simple expense:
+   `> $45 groceries`
+   Expect: `✓ $45.00 — groceries  [Groceries]`
+2. Parse with a flag:
+   `> $12 coffee, one-off`
+   Expect: `✓ $12.00 — coffee  #one-off`
+3. Exercise goal disambiguation:
+   `> $40 books, learning goal`
+   `> 1`
+   Expect the numbered chooser, then `✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid`
+4. Exercise correction flows:
+   `> $18 target`
+   `> no, that one's for the emergency fund goal`
+   Expect a `✓ updated — ... → Emergency Fund` line
+   `> $45 groceries`
+   `> oops, 54 not 45`
+   Expect a `✓ updated — $54.00 — groceries  [Groceries]` line
+5. Exercise server-backed reads:
+   `> report groceries`
+   `> report goal resilient kid`
+   `> how much on groceries this cycle?`
+   `> what's left in eating out?`
+   `> what did we put toward the resilient kid goal this cycle?`
+6. Exercise local-only commands:
+   `> set groceries budget to $600`
+   `> remove groceries budget`
+   `> history`
+
+Important current limitation: the read endpoints still serve dummy/static data. Logging a new expense succeeds through the server, but the read outputs above will not yet recompute from the expenses you just logged.
+
 ### Current behavior split
 
-- Expense parsing and creation go through the server.
-- Reports, budget commands, and most multi-step REPL state still live in the CLI for now.
+- Expense parsing, creation, correction, reports, goal summaries, budget reads, and question answering go through the server.
+- Budget write commands, budget recommendation prompts, and most multi-step REPL state still live in the CLI for now.
+- Server-backed reads are still dummy/static; they do not yet recompute from newly logged expenses.
 - Server data is reset when the server process restarts.
 
 ## 1. System Overview
