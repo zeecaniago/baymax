@@ -13,6 +13,9 @@ except ImportError:  # pragma: no cover - depends on platform support
 
 BOOT_BANNER = "Cycle: Jun 26 \u2013 Jul 25   (day 10 of 30)"
 MISSING = object()
+GOAL_IDS = {
+    "resilient kid": "goal-resilient-kid",
+}
 
 
 @dataclass
@@ -97,20 +100,16 @@ class BaymaxCli:
             return self._report_groceries()
 
         if lowered == "report goal resilient kid":
-            return [
-                "Raise a strong, resilient kid",
-                "  This cycle: $90 across 2 expenses",
-                "  All-time: $890 across 14 expenses (since Mar 2026)",
-            ]
+            return self._report_goal_summary("resilient kid")
 
         if lowered == "how much on groceries this cycle?":
-            return [self._groceries_cycle_summary()]
+            return self._ask_question(raw)
 
         if lowered == "what's left in eating out?":
-            return [self._eating_out_balance()]
+            return self._eating_out_balance()
 
         if lowered == "what did we put toward the resilient kid goal this cycle?":
-            return ["$90.00 across 2 expenses \u2014 karate class $50, books $40"]
+            return self._ask_question(raw)
 
         if lowered == "no, that one's for the emergency fund goal":
             return self._update_last_goal("Emergency Fund")
@@ -444,37 +443,126 @@ class BaymaxCli:
         ]
 
     def _report_groceries(self) -> list[str]:
-        budget = self._budget_for("Groceries", default=400.0)
-        if budget is None:
-            return [
-                "Groceries \u2014 Jun 26\u2013Jul 25",
-                "  $403 spent \u00b7 15 expenses \u00b7 avg $26.87",
-                "  Largest: Costco $91, Whole Foods $64, Trader Joe's $58",
-            ]
+        try:
+            report = self.api.get_reports(report_type="category")
+        except BaymaxApiError as exc:
+            print(exc)
+            return []
 
-        percent = round((403.0 / budget) * 100)
+        category = self._find_named_item(report.get("items"), "groceries")
+        if category is None:
+            print("Baymax API didn't return a groceries report.")
+            return []
+        return self._format_category_report(report, category)
+
+    def _report_goal_summary(self, goal_alias: str) -> list[str]:
+        goal_id = GOAL_IDS.get(goal_alias)
+        if goal_id is None:
+            return [f"No goal called {goal_alias!r}."]
+
+        try:
+            summary = self.api.get_goal_summary(goal_id)
+        except BaymaxApiError as exc:
+            print(exc)
+            return []
+
+        cycle_amount = float(summary.get("cycle_contributions") or 0.0)
+        cycle_count = int(summary.get("cycle_expense_count") or 0)
+        total_amount = float(summary.get("total_contributions") or 0.0)
+        total_count = int(summary.get("total_expense_count") or 0)
+        since = summary.get("since")
+
+        all_time_line = (
+            f"  All-time: {self._format_currency(total_amount)} across "
+            f"{total_count} {self._expense_label(total_count)}"
+        )
+        if since:
+            all_time_line += f" (since {since})"
+
         return [
-            "Groceries \u2014 Jun 26\u2013Jul 25",
-            f"  {self._format_currency(403.0)} of {self._format_currency(budget)} ({percent}%) \u00b7 15 expenses \u00b7 avg $26.87",
-            "  Largest: Costco $91, Whole Foods $64, Trader Joe's $58",
+            summary["name"],
+            f"  This cycle: {self._format_currency(cycle_amount)} across {cycle_count} {self._expense_label(cycle_count)}",
+            all_time_line,
         ]
 
-    def _groceries_cycle_summary(self) -> str:
-        budget = self._budget_for("Groceries", default=400.0)
-        if budget is None:
-            return "Groceries: $403.00 \u2014 15 expenses"
+    def _eating_out_balance(self) -> list[str]:
+        try:
+            budgets = self.api.get_budgets()
+        except BaymaxApiError as exc:
+            print(exc)
+            return []
 
-        percent = round((403.0 / budget) * 100)
-        return (
-            f"Groceries: $403.00 of {self._format_currency(budget)} ({percent}%)"
-            " \u2014 15 expenses"
-        )
+        category = self._find_named_item(budgets.get("categories"), "eating out")
+        if category is None:
+            print("Baymax API didn't return an Eating Out budget.")
+            return []
 
-    def _eating_out_balance(self) -> str:
-        budget = self._budget_for("Eating Out")
+        budget = category.get("budget_amount")
         if budget is None:
-            return "Eating Out doesn't have a budget this cycle."
-        return f"{self._format_currency(budget - 105.0)} left of {self._format_currency(budget)}"
+            return ["Eating Out doesn't have a budget this cycle."]
+
+        remaining = category.get("remaining")
+        if remaining is None:
+            remaining = float(budget) - float(category.get("spent") or 0.0)
+        return [f"{self._format_currency(float(remaining))} left of {self._format_currency(float(budget))}"]
+
+    def _ask_question(self, question: str) -> list[str]:
+        try:
+            response = self.api.ask(question)
+        except BaymaxApiError as exc:
+            print(exc)
+            return []
+
+        answer = response.get("answer")
+        if not isinstance(answer, str):
+            print("Baymax API returned an invalid answer payload.")
+            return []
+        return [answer]
+
+    def _format_category_report(self, report: dict, category: dict) -> list[str]:
+        category_name = self._normalize_category_name(category["name"])
+        cycle_label = report.get("cycle_label") or report.get("cycle") or "current"
+        spent = float(category.get("spent") or 0.0)
+        budget = category.get("budget_amount")
+        expense_count = int(category.get("expense_count") or 0)
+        average_amount = float(category.get("average_amount") or 0.0)
+
+        if budget is None:
+            summary_line = (
+                f"  {self._format_currency(spent)} spent \u00b7 "
+                f"{expense_count} {self._expense_label(expense_count)} \u00b7 "
+                f"avg {self._format_currency(average_amount)}"
+            )
+        else:
+            percent = round((spent / float(budget)) * 100) if budget else 0
+            summary_line = (
+                f"  {self._format_currency(spent)} of {self._format_currency(float(budget))} "
+                f"({percent}%) \u00b7 {expense_count} {self._expense_label(expense_count)} \u00b7 "
+                f"avg {self._format_currency(average_amount)}"
+            )
+
+        lines = [f"{category_name} \u2014 {cycle_label}", summary_line]
+        largest_expenses = category.get("largest_expenses") or []
+        if largest_expenses:
+            formatted_largest = ", ".join(
+                f"{entry['description']} {self._format_currency(float(entry['amount']))}"
+                for entry in largest_expenses
+            )
+            lines.append(f"  Largest: {formatted_largest}")
+        return lines
+
+    def _find_named_item(self, items: list[dict] | None, name: str) -> dict | None:
+        if not items:
+            return None
+        normalized_name = name.strip().lower()
+        for item in items:
+            item_name = item.get("name")
+            if isinstance(item_name, str) and item_name.strip().lower() == normalized_name:
+                return item
+        return None
+
+    def _expense_label(self, count: int) -> str:
+        return "expense" if count == 1 else "expenses"
 
     def _budget_for(self, category: str, default: float | None = None) -> float | None:
         return self.category_budgets.get(category, default)

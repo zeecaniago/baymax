@@ -9,7 +9,7 @@ That's it. No summary, no "you have 3 budgets," nothing until asked — the agen
 
 ## Running against the dummy server
 
-Expense logging now goes through the API server instead of being generated entirely inside the CLI.
+Expense logging and the main read flows now go through the API server instead of being generated entirely inside the CLI.
 
 1. Start the server:
    `uvicorn server.app:app --reload`
@@ -17,6 +17,23 @@ Expense logging now goes through the API server instead of being generated entir
    `python3 -m cli`
 
 The CLI defaults to `http://127.0.0.1:8000`. Override that with `BAYMAX_API_URL` if needed.
+
+Right now the server owns:
+
+- expense parsing and creation
+- correction via `PATCH /expenses/{id}`
+- reports like `report groceries`
+- goal summaries like `report goal resilient kid`
+- budget reads like `what's left in eating out?`
+- natural-language read answers like `how much on groceries this cycle?`
+
+What is still local to the CLI:
+
+- budget write commands (`set ... budget`, `remove ... budget`)
+- budget recommendation confirmation flow
+- pending multi-step REPL state like goal disambiguation prompts
+
+Current limitation: the read endpoints still return dummy/static data. Logging an expense succeeds through the server, but the report and question outputs below do not yet recompute from what you just logged.
 
 ## Session history
 
@@ -155,6 +172,37 @@ Eating Out doesn't have a budget this cycle.
 > what did we put toward the resilient kid goal this cycle?
 $90.00 across 2 expenses — karate class $50, books $40
 ```
+
+## Smoke-test walkthrough
+
+Use this as a manual verification script after starting the server and the CLI:
+
+1. `> $45 groceries`
+   Expect: `✓ $45.00 — groceries  [Groceries]`
+2. `> $12 coffee, one-off`
+   Expect: `✓ $12.00 — coffee  #one-off`
+3. `> $40 books, learning goal`
+   `> 1`
+   Expect the numbered chooser, then `✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid`
+4. `> $18 target`
+   `> no, that one's for the emergency fund goal`
+   Expect: `✓ updated — $18.00 — target  [Shopping]  → Emergency Fund`
+5. `> $45 groceries`
+   `> oops, 54 not 45`
+   Expect: `✓ updated — $54.00 — groceries  [Groceries]`
+6. `> report groceries`
+   Expect the three-line groceries report shown above
+7. `> report goal resilient kid`
+   Expect the two summary lines plus the all-time line shown below
+8. `> how much on groceries this cycle?`
+   Expect: `Groceries: $403.00 of $400.00 (101%) — 15 expenses`
+9. `> what's left in eating out?`
+   Expect: `Eating Out doesn't have a budget this cycle.`
+10. `> what did we put toward the resilient kid goal this cycle?`
+    Expect: `$90.00 across 2 expenses — karate class $50, books $40`
+11. `> set groceries budget to $600`
+    `> remove groceries budget`
+12. `> history`
 
 ## Budget recommendation
 
