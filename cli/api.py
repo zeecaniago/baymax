@@ -5,7 +5,6 @@ import os
 from typing import Any
 from urllib import error, parse, request
 
-
 DEFAULT_API_URL = "http://127.0.0.1:8000"
 
 

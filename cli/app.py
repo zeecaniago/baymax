@@ -438,8 +438,11 @@ class BaymaxCli:
                 print("Baymax API returned an invalid budget update payload.")
                 return []
             return [
-                f"\u2713 [{category_name}] budget updated: {self._format_currency(budget_amount)}/cycle"
-                f" (was {self._format_currency(float(previous_budget))}/cycle)"
+                (
+                    f"\u2713 [{category_name}] budget updated: "
+                    f"{self._format_currency(budget_amount)}/cycle"
+                    f" (was {self._format_currency(float(previous_budget))}/cycle)"
+                )
             ]
 
         print("Baymax API returned an invalid budget response.")
@@ -468,8 +471,10 @@ class BaymaxCli:
                 return []
             self.category_budgets[category_name] = None
             return [
-                f"\u2713 [{category_name}] \u2014 budget removed"
-                f" (was {self._format_currency(float(previous_budget))}/cycle)"
+                (
+                    f"\u2713 [{category_name}] \u2014 budget removed"
+                    f" (was {self._format_currency(float(previous_budget))}/cycle)"
+                )
             ]
 
         print("Baymax API returned an invalid budget response.")

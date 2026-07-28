@@ -3,12 +3,12 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 from datetime import date as DateType
+from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
-
 
 app = FastAPI(
     title="Baymax API",
@@ -356,7 +356,7 @@ def create_expense(payload: CreateExpenseRequest) -> dict:
         "flags": payload.flags,
         "goals": payload.goals,
         "notes": payload.notes,
-        "date": str(payload.date or DateType.today()),
+        "date": str(payload.date or datetime.now(timezone.utc).date()),
     }
     _DUMMY_EXPENSES.append(expense)
     return expense
