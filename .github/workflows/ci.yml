@@ -43,6 +43,11 @@ jobs:
           python -m pip install -r cli/requirements.txt
           python -m pip install -r server/requirements.txt
 
+      - name: Prepare CI artifacts
+        run: |
+          mkdir -p ci-artifacts
+          printf 'Coverage reports are uploaded here when the test step completes.\n' > ci-artifacts/README.txt
+
       - name: Lint
         run: python -m ruff check cli server tests
 
@@ -52,4 +57,12 @@ jobs:
             --cov=cli \
             --cov=server \
             --cov-report=term-missing \
-            --cov-report=xml
+            --cov-report=xml:ci-artifacts/coverage.xml \
+            --cov-report=html:ci-artifacts/htmlcov
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ci-artifacts/
