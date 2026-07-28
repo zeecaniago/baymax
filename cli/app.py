@@ -12,7 +12,6 @@ except ImportError:  # pragma: no cover - depends on platform support
 
 
 BOOT_BANNER = "Cycle: Jun 26 \u2013 Jul 25   (day 10 of 30)"
-MISSING = object()
 GOAL_IDS = {
     "resilient kid": "goal-resilient-kid",
 }
@@ -196,8 +195,7 @@ class BaymaxCli:
         if raw.strip().lower() in {"y", "yes"}:
             if category is None or amount is None:
                 return ["Nothing to update."]
-            self.category_budgets[category] = amount
-            return [f"\u2713 {category} budget set to {self._format_currency(amount)}/cycle"]
+            return self._set_category_budget(category, amount)
         return ["No change."]
 
     def _update_last_goal(self, goal: str) -> list[str]:
@@ -417,30 +415,65 @@ class BaymaxCli:
         return aliases.get(category.lower(), category.title())
 
     def _set_category_budget(self, category: str, amount: float) -> list[str]:
-        previous_budget = self.category_budgets.get(category, MISSING)
-        self.category_budgets[category] = amount
+        try:
+            response = self.api.set_budget(category, amount)
+        except BaymaxApiError as exc:
+            print(exc)
+            return []
 
-        if previous_budget is MISSING:
-            return [f"\u2713 Created [{category}] \u2014 budget {self._format_currency(amount)}/cycle"]
-        if previous_budget is None:
-            return [f"\u2713 [{category}] budget set to {self._format_currency(amount)}/cycle"]
-        return [
-            f"\u2713 [{category}] budget updated: {self._format_currency(amount)}/cycle"
-            f" (was {self._format_currency(previous_budget)}/cycle)"
-        ]
+        action = response.get("action")
+        payload = response.get("category") or {}
+        category_name = self._normalize_api_category(payload.get("name")) or category
+        budget_amount = float(payload.get("budget_amount") or amount)
+        previous_budget = response.get("previous_budget")
+
+        self.category_budgets[category_name] = budget_amount
+
+        if action == "created":
+            return [f"\u2713 Created [{category_name}] \u2014 budget {self._format_currency(budget_amount)}/cycle"]
+        if action == "set":
+            return [f"\u2713 [{category_name}] budget set to {self._format_currency(budget_amount)}/cycle"]
+        if action == "updated":
+            if previous_budget is None:
+                print("Baymax API returned an invalid budget update payload.")
+                return []
+            return [
+                f"\u2713 [{category_name}] budget updated: {self._format_currency(budget_amount)}/cycle"
+                f" (was {self._format_currency(float(previous_budget))}/cycle)"
+            ]
+
+        print("Baymax API returned an invalid budget response.")
+        return []
 
     def _remove_category_budget(self, category: str) -> list[str]:
-        previous_budget = self.category_budgets.get(category, MISSING)
-        if previous_budget is MISSING:
-            return [f"No category called [{category}] yet."]
-        if previous_budget is None:
-            return [f"[{category}] doesn't have a budget."]
+        try:
+            response = self.api.remove_budget(category)
+        except BaymaxApiError as exc:
+            print(exc)
+            return []
 
-        self.category_budgets[category] = None
-        return [
-            f"\u2713 [{category}] \u2014 budget removed"
-            f" (was {self._format_currency(previous_budget)}/cycle)"
-        ]
+        action = response.get("action")
+        payload = response.get("category") or {}
+        category_name = self._normalize_api_category(payload.get("name")) or category
+        previous_budget = response.get("previous_budget")
+
+        if action == "missing":
+            return [f"No category called [{category}] yet."]
+        if action == "already_removed":
+            self.category_budgets[category_name] = None
+            return [f"[{category_name}] doesn't have a budget."]
+        if action == "removed":
+            if previous_budget is None:
+                print("Baymax API returned an invalid budget removal payload.")
+                return []
+            self.category_budgets[category_name] = None
+            return [
+                f"\u2713 [{category_name}] \u2014 budget removed"
+                f" (was {self._format_currency(float(previous_budget))}/cycle)"
+            ]
+
+        print("Baymax API returned an invalid budget response.")
+        return []
 
     def _report_groceries(self) -> list[str]:
         try:

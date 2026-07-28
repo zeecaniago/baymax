@@ -25,12 +25,12 @@ Right now the server owns:
 - reports like `report groceries`
 - goal summaries like `report goal resilient kid`
 - budget reads like `what's left in eating out?`
+- budget writes like `set groceries budget to $600`
 - natural-language read answers like `how much on groceries this cycle?`
 
 What is still local to the CLI:
 
-- budget write commands (`set ... budget`, `remove ... budget`)
-- budget recommendation confirmation flow
+- budget recommendation prompt state before you answer `yes` or `no`
 - pending multi-step REPL state like goal disambiguation prompts
 
 Current limitation: the read endpoints still return dummy/static data. Logging an expense succeeds through the server, but the report and question outputs below do not yet recompute from what you just logged.
@@ -164,7 +164,7 @@ After this, groceries can keep being logged all cycle with no more pings — the
 
 ```
 > how much on groceries this cycle?
-Groceries: $403.00 of $400 (101%) — 15 expenses
+Groceries: $403.00 of $400.00 (101%) — 15 expenses
 
 > what's left in eating out?
 Eating Out doesn't have a budget this cycle.
@@ -202,7 +202,9 @@ Use this as a manual verification script after starting the server and the CLI:
     Expect: `$90.00 across 2 expenses — karate class $50, books $40`
 11. `> set groceries budget to $600`
     `> remove groceries budget`
-12. `> history`
+12. `> suggest a groceries budget`
+    `> yes`
+13. `> history`
 
 ## Budget recommendation
 
@@ -211,15 +213,15 @@ Use this as a manual verification script after starting the server and the CLI:
 Last 3 cycles: $380, $410, $395 — avg $395
 Suggest $400/cycle. Set it?
 > yes
-✓ Groceries budget set to $400/cycle
+✓ [Groceries] budget set to $400/cycle
 ```
 
 ## Setting budgets
 
 Create a new category with a budget:
 ```
-> set groceries budget to $600
-✓ Created [Groceries] — budget $600/cycle
+> set subscriptions budget to $30
+✓ Created [Subscriptions] — budget $30/cycle
 ```
 
 Existing category that had no budget:

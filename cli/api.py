@@ -25,6 +25,14 @@ class BaymaxApiClient:
     def get_budgets(self) -> dict[str, Any]:
         return self._get_json("/budgets")
 
+    def set_budget(self, category: str, amount: float) -> dict[str, Any]:
+        encoded_category = parse.quote(category, safe="")
+        return self._request_json("PUT", f"/budgets/{encoded_category}", {"amount": amount})
+
+    def remove_budget(self, category: str) -> dict[str, Any]:
+        encoded_category = parse.quote(category, safe="")
+        return self._request_json("DELETE", f"/budgets/{encoded_category}")
+
     def get_reports(
         self,
         *,
