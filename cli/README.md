@@ -7,7 +7,7 @@ Cycle: Jun 26 – Jul 25   (day 10 of 30)
 ```
 That's it. No summary, no "you have 3 budgets," nothing until asked — the agent starts quiet.
 
-## Running against the dummy server
+## Running against the in-memory server
 
 Expense logging and the main read flows now go through the API server instead of being generated entirely inside the CLI.
 
@@ -18,7 +18,7 @@ Expense logging and the main read flows now go through the API server instead of
 
 The CLI defaults to `http://127.0.0.1:8000`. Override that with `BAYMAX_API_URL` if needed.
 
-Right now the server owns:
+The server owns:
 
 - expense parsing and creation
 - correction via `PATCH /expenses/{id}`
@@ -33,7 +33,7 @@ What is still local to the CLI:
 - budget recommendation prompt state before you answer `yes` or `no`
 - pending multi-step REPL state like goal disambiguation prompts
 
-Current limitation: the read endpoints still return dummy/static data. Logging an expense succeeds through the server, but the report and question outputs below do not yet recompute from what you just logged.
+Current limitation: the server calculates reads from in-memory data. Logging or correcting an expense immediately changes its reports and answers, but the data resets when the server restarts.
 
 ## Session history
 
@@ -174,6 +174,8 @@ $90.00 across 2 expenses — karate class $50, books $40
 ```
 
 ## Smoke-test walkthrough
+
+The exact amounts in reports and questions reflect the expenses logged during the current server process. The sample values below illustrate the intended formatting.
 
 Use this as a manual verification script after starting the server and the CLI:
 

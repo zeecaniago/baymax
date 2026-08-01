@@ -2,10 +2,10 @@
 
 The repo currently contains:
 
-- a dummy FastAPI server in `server/`
+- an in-memory FastAPI server in `server/`
 - a Python REPL-style CLI in `cli/`
 
-The server is still in-memory only. It returns dummy data and stores created expenses in process memory only. There is no Postgres/MySQL setup yet.
+The server is still in-memory only: expenses, budgets, reports, and goal summaries reset when its process restarts. Reports and balances are now calculated from the expenses saved during the current server process. There is no Postgres/MySQL setup yet.
 
 ### 1. Install server dependencies
 
@@ -23,7 +23,7 @@ In one terminal:
 uvicorn server.app:app --reload
 ```
 
-That starts the dummy API on `http://127.0.0.1:8000`.
+That starts the API on `http://127.0.0.1:8000`.
 
 ### 3. Start the CLI
 
@@ -66,7 +66,7 @@ Which goal?
 ✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid
 ```
 
-Server-backed read flows:
+Server-backed read flows (the exact figures reflect the expenses logged in the running server):
 
 ```text
 > report groceries
@@ -161,13 +161,13 @@ Use the README as a manual test script while the server is running:
 8. Exercise local-only commands:
    `> history`
 
-Important current limitation: the read endpoints still serve dummy/static data. Logging a new expense succeeds through the server, but the read outputs above will not yet recompute from the expenses you just logged.
+Important current limitation: the read endpoints calculate from in-memory data only. Logging or correcting an expense immediately changes later reports and balances, but all data is lost when the server restarts.
 
 ### Current behavior split
 
 - Expense parsing, creation, correction, reports, goal summaries, budget reads, budget writes, and question answering go through the server.
 - Budget recommendation prompts and most multi-step REPL state still live in the CLI for now.
-- Server-backed reads are still dummy/static; they do not yet recompute from newly logged expenses.
+- Server-backed reads recompute from newly logged and corrected expenses while the server is running.
 - Server data is reset when the server process restarts.
 
 ## 1. System Overview

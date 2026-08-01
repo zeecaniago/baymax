@@ -4,7 +4,7 @@ import re
 from copy import deepcopy
 from datetime import date as DateType
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
@@ -13,43 +13,43 @@ from pydantic import BaseModel, Field
 app = FastAPI(
     title="Baymax API",
     version="0.1.0",
-    description="Minimal dummy API surface based on README.md.",
+    description="In-memory API for the Baymax expense-tracking prototype.",
 )
 
 
 class ParseExpenseRequest(BaseModel):
     raw_text: str = Field(..., min_length=1)
-    household_id: str | None = None
+    household_id: Optional[str] = None
 
 
 class ExpenseDraft(BaseModel):
     amount: float
     description: str
-    category: str | None = None
+    category: Optional[str] = None
     flags: list[str] = Field(default_factory=list)
     goal_candidates: list[str] = Field(default_factory=list)
-    notes: str | None = None
+    notes: Optional[str] = None
 
 
 class CreateExpenseRequest(BaseModel):
     amount: float
     description: str
-    category: str | None = None
+    category: Optional[str] = None
     flags: list[str] = Field(default_factory=list)
     goals: list[str] = Field(default_factory=list)
-    notes: str | None = None
-    date: DateType | None = None
-    user_id: str | None = None
+    notes: Optional[str] = None
+    date: Optional[DateType] = None
+    user_id: Optional[str] = None
 
 
 class UpdateExpenseRequest(BaseModel):
-    amount: float | None = None
-    description: str | None = None
-    category: str | None = None
-    flags: list[str] | None = None
-    goals: list[str] | None = None
-    notes: str | None = None
-    date: DateType | None = None
+    amount: Optional[float] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    flags: Optional[list[str]] = None
+    goals: Optional[list[str]] = None
+    notes: Optional[str] = None
+    date: Optional[DateType] = None
 
 
 class SetBudgetRequest(BaseModel):
@@ -67,136 +67,49 @@ class AskResponse(BaseModel):
     supporting_data: dict
 
 
-_DUMMY_BUDGETS = {
-    "cycle": "current",
-    "cycle_label": "Jun 26–Jul 25",
-    "currency": "USD",
-    "categories": [
-        {
-            "name": "groceries",
-            "budget_amount": 400.0,
-            "spent": 403.0,
-            "remaining": -3.0,
-            "expense_count": 15,
-            "average_amount": 26.87,
-            "largest_expenses": [
-                {"description": "Costco", "amount": 91.0},
-                {"description": "Whole Foods", "amount": 64.0},
-                {"description": "Trader Joe's", "amount": 58.0},
-            ],
-        },
-        {
-            "name": "transport",
-            "budget_amount": 150.0,
-            "spent": 48.75,
-            "remaining": 101.25,
-            "expense_count": 3,
-            "average_amount": 16.25,
-            "largest_expenses": [
-                {"description": "Train reload", "amount": 18.5},
-                {"description": "Bus pass top-up", "amount": 16.25},
-                {"description": "Parking meter", "amount": 14.0},
-            ],
-        },
-        {
-            "name": "eating out",
-            "budget_amount": None,
-            "spent": 105.0,
-            "remaining": None,
-            "expense_count": 6,
-            "average_amount": 17.5,
-            "largest_expenses": [
-                {"description": "Sushi lunch", "amount": 28.0},
-                {"description": "Pizza night", "amount": 24.0},
-                {"description": "Coffee run", "amount": 19.0},
-            ],
-        },
-    ],
-    "totals": {"budgeted": 550.0, "spent": 451.75, "remaining": 98.25},
+# These are initial configuration values, not report fixtures. Spending, counts,
+# reports, and goal progress are all calculated from _EXPENSES below.
+_DEFAULT_CATEGORY_BUDGETS: dict[str, Optional[float]] = {
+    "groceries": 400.0,
+    "transport": 150.0,
+    "eating out": None,
 }
+_CATEGORY_BUDGETS = deepcopy(_DEFAULT_CATEGORY_BUDGETS)
 
-_DUMMY_GOALS = {
+_GOAL_DEFINITIONS = {
     "goal-resilient-kid": {
         "id": "goal-resilient-kid",
         "name": "Raise a strong, resilient kid",
         "target_amount": None,
         "target_date": None,
         "is_open_ended": True,
-        "cycle_contributions": 90.0,
-        "total_contributions": 890.0,
-        "remaining_to_target": None,
-        "cycle_expense_count": 2,
-        "total_expense_count": 14,
-        "since": "Mar 2026",
-        "cycle_entries": [
-            {"description": "karate class", "amount": 50.0},
-            {"description": "books", "amount": 40.0},
-        ],
     },
     "goal-emergency-fund": {
         "id": "goal-emergency-fund",
         "name": "Emergency Fund",
-        "target_amount": 10000,
+        "target_amount": 10000.0,
         "target_date": None,
         "is_open_ended": True,
-        "cycle_contributions": 125.0,
-        "total_contributions": 2750.0,
-        "remaining_to_target": 7250.0,
-        "cycle_expense_count": 3,
-        "total_expense_count": 17,
-        "since": "Jan 2026",
-        "cycle_entries": [
-            {"description": "paycheck transfer", "amount": 75.0},
-            {"description": "bonus sweep", "amount": 50.0},
-        ],
     },
     "goal-japan-trip": {
         "id": "goal-japan-trip",
         "name": "Japan Trip",
-        "target_amount": 4000,
+        "target_amount": 4000.0,
         "target_date": "2027-05-01",
         "is_open_ended": False,
-        "cycle_contributions": 220.0,
-        "total_contributions": 980.0,
-        "remaining_to_target": 3020.0,
-        "cycle_expense_count": 2,
-        "total_expense_count": 6,
-        "since": "Apr 2026",
-        "cycle_entries": [
-            {"description": "flight deposit", "amount": 200.0},
-            {"description": "passport renewal", "amount": 20.0},
-        ],
     },
 }
 
-_DUMMY_EXPENSES = [
-    {
-        "id": "exp-1",
-        "household_id": "household-1",
-        "user_id": "user-1",
-        "cycle": "current",
-        "amount": 45.00,
-        "description": "Groceries at corner market",
-        "category": "groceries",
-        "flags": ["one-off"],
-        "goals": [],
-        "notes": None,
-        "date": "2026-07-03",
-    },
-    {
-        "id": "exp-2",
-        "household_id": "household-1",
-        "user_id": "user-2",
-        "cycle": "current",
-        "amount": 18.50,
-        "description": "Train reload",
-        "category": "transport",
-        "flags": [],
-        "goals": [],
-        "notes": "Monthly commute top-up",
-        "date": "2026-07-02",
-    },
-]
+# This remains process-local until the persistence layer is introduced. Unlike
+# the old fixture data, every read endpoint derives its values from this list.
+_EXPENSES: list[dict] = []
+
+
+def reset_in_memory_store() -> None:
+    """Reset the prototype store. Kept public for isolated API tests."""
+    _EXPENSES.clear()
+    _CATEGORY_BUDGETS.clear()
+    _CATEGORY_BUDGETS.update(deepcopy(_DEFAULT_CATEGORY_BUDGETS))
 
 
 def _extract_amount(raw_text: str) -> float:
@@ -220,7 +133,7 @@ def _extract_flags(raw_text: str) -> list[str]:
     return [flag for flag in known_flags if flag in lowered]
 
 
-def _extract_category(description: str) -> str | None:
+def _extract_category(description: str) -> Optional[str]:
     lowered = description.lower()
     if "grocer" in lowered:
         return "groceries"
@@ -254,69 +167,178 @@ def _goal_candidates(raw_text: str) -> list[str]:
     return []
 
 
-def _budget_category(name: str) -> dict | None:
-    normalized = name.strip().lower()
-    for category in _DUMMY_BUDGETS["categories"]:
-        if category["name"] == normalized:
-            return category
-    return None
-
-
-def _normalized_budget_name(name: str) -> str:
+def _normalized_name(name: str) -> str:
     return " ".join(name.strip().split()).lower()
 
 
-def _make_budget_category(name: str, budget_amount: float | None) -> dict:
-    spent = 0.0
+def _canonical_goal_name(name: str) -> str:
+    normalized = _normalized_name(name)
+    for goal in _GOAL_DEFINITIONS.values():
+        if normalized in {_normalized_name(goal["id"]), _normalized_name(goal["name"])}:
+            return goal["name"]
+    return " ".join(name.strip().split())
+
+
+def _cycle_start(value: DateType) -> DateType:
+    if value.day >= 26:
+        return DateType(value.year, value.month, 26)
+    if value.month == 1:
+        return DateType(value.year - 1, 12, 26)
+    return DateType(value.year, value.month - 1, 26)
+
+
+def _next_cycle_start(start: DateType) -> DateType:
+    if start.month == 12:
+        return DateType(start.year + 1, 1, 26)
+    return DateType(start.year, start.month + 1, 26)
+
+
+def _cycle_bounds(cycle: str) -> tuple[DateType, DateType]:
+    if cycle == "current":
+        start = _cycle_start(datetime.now(timezone.utc).date())
+    else:
+        try:
+            start = _cycle_start(DateType.fromisoformat(cycle))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="cycle must be 'current' or an ISO date (YYYY-MM-DD)",
+            ) from exc
+    return start, _next_cycle_start(start)
+
+
+def _cycle_label(start: DateType, end_exclusive: DateType) -> str:
+    end = end_exclusive.fromordinal(end_exclusive.toordinal() - 1)
+    return f"{start.strftime('%b')} {start.day}\u2013{end.strftime('%b')} {end.day}"
+
+
+def _expenses_for_cycle(cycle: str) -> list[dict]:
+    start, end_exclusive = _cycle_bounds(cycle)
+    return [
+        expense
+        for expense in _EXPENSES
+        if start <= DateType.fromisoformat(expense["date"]) < end_exclusive
+    ]
+
+
+def _known_category_names() -> list[str]:
+    names = list(_CATEGORY_BUDGETS)
+    for expense in _EXPENSES:
+        category = expense.get("category")
+        if category:
+            normalized = _normalized_name(category)
+            if normalized not in names:
+                names.append(normalized)
+    return names
+
+
+def _category_summary(name: str, expenses: list[dict]) -> dict:
+    normalized = _normalized_name(name)
+    matching_expenses = [
+        expense
+        for expense in expenses
+        if expense.get("category") and _normalized_name(expense["category"]) == normalized
+    ]
+    amounts = [float(expense["amount"]) for expense in matching_expenses]
+    spent = round(sum(amounts), 2)
+    budget_amount = _CATEGORY_BUDGETS.get(normalized)
+    largest = sorted(matching_expenses, key=lambda expense: float(expense["amount"]), reverse=True)[:3]
     return {
-        "name": _normalized_budget_name(name),
+        "name": normalized,
         "budget_amount": budget_amount,
         "spent": spent,
-        "remaining": None if budget_amount is None else budget_amount - spent,
-        "expense_count": 0,
-        "average_amount": 0.0,
-        "largest_expenses": [],
+        "remaining": None if budget_amount is None else round(budget_amount - spent, 2),
+        "expense_count": len(matching_expenses),
+        "average_amount": round(spent / len(amounts), 2) if amounts else 0.0,
+        "largest_expenses": [
+            {"description": expense["description"], "amount": float(expense["amount"])}
+            for expense in largest
+        ],
     }
 
 
-def _recalculate_budget_totals() -> None:
-    budgeted = 0.0
-    spent = 0.0
+def _budget_payload(cycle: str = "current") -> dict:
+    start, end_exclusive = _cycle_bounds(cycle)
+    expenses = _expenses_for_cycle(cycle)
+    categories = [_category_summary(name, expenses) for name in _known_category_names()]
+    budgeted_categories = [category for category in categories if category["budget_amount"] is not None]
+    budgeted = round(sum(float(category["budget_amount"]) for category in budgeted_categories), 2)
+    spent = round(sum(float(category["spent"]) for category in budgeted_categories), 2)
+    return {
+        "cycle": cycle,
+        "cycle_label": _cycle_label(start, end_exclusive),
+        "currency": "USD",
+        "categories": categories,
+        "totals": {"budgeted": budgeted, "spent": spent, "remaining": round(budgeted - spent, 2)},
+    }
 
-    for category in _DUMMY_BUDGETS["categories"]:
-        budget_amount = category.get("budget_amount")
-        category_spent = float(category.get("spent") or 0.0)
-        if budget_amount is None:
-            category["remaining"] = None
-            continue
 
-        budgeted += float(budget_amount)
-        spent += category_spent
-        category["remaining"] = float(budget_amount) - category_spent
+def _goal_entries(goal: dict, expenses: list[dict]) -> list[dict]:
+    goal_names = {_normalized_name(goal["id"]), _normalized_name(goal["name"])}
+    return [
+        expense
+        for expense in expenses
+        if any(_normalized_name(goal_name) in goal_names for goal_name in expense.get("goals", []))
+    ]
 
-    _DUMMY_BUDGETS["totals"] = {
-        "budgeted": budgeted,
-        "spent": spent,
-        "remaining": budgeted - spent,
+
+def _goal_summary(goal_id: str, cycle: str) -> dict:
+    goal = _GOAL_DEFINITIONS.get(goal_id)
+    if goal is None:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    cycle_entries = _goal_entries(goal, _expenses_for_cycle(cycle))
+    all_entries = _goal_entries(goal, _EXPENSES)
+    total_contributions = round(sum(float(expense["amount"]) for expense in all_entries), 2)
+    target_amount = goal["target_amount"]
+    since = min((expense["date"] for expense in all_entries), default=None)
+    start, end_exclusive = _cycle_bounds(cycle)
+    return {
+        **deepcopy(goal),
+        "cycle": cycle,
+        "cycle_label": _cycle_label(start, end_exclusive),
+        "cycle_contributions": round(sum(float(expense["amount"]) for expense in cycle_entries), 2),
+        "total_contributions": total_contributions,
+        "remaining_to_target": (
+            None if target_amount is None else round(max(target_amount - total_contributions, 0.0), 2)
+        ),
+        "cycle_expense_count": len(cycle_entries),
+        "total_expense_count": len(all_entries),
+        "since": DateType.fromisoformat(since).strftime("%b %Y") if since else None,
+        "cycle_entries": [
+            {"description": expense["description"], "amount": float(expense["amount"])}
+            for expense in cycle_entries
+        ],
     }
 
 
 def _report_payload(report_type: str, cycle: str) -> dict:
+    budget_payload = _budget_payload(cycle)
     if report_type == "goal":
-        return {"type": report_type, "cycle": cycle, "items": list(_DUMMY_GOALS.values())}
-    if report_type == "flag":
         return {
             "type": report_type,
             "cycle": cycle,
-            "items": [
-                {"flag": "one-off", "count": 1, "total_amount": 45.0},
-                {"flag": "shared", "count": 0, "total_amount": 0.0},
-            ],
+            "cycle_label": budget_payload["cycle_label"],
+            "items": [_goal_summary(goal_id, cycle) for goal_id in _GOAL_DEFINITIONS],
+        }
+    if report_type == "flag":
+        totals: dict[str, dict] = {}
+        for expense in _expenses_for_cycle(cycle):
+            for flag in expense.get("flags", []):
+                summary = totals.setdefault(flag, {"flag": flag, "count": 0, "total_amount": 0.0})
+                summary["count"] += 1
+                summary["total_amount"] = round(summary["total_amount"] + float(expense["amount"]), 2)
+        return {
+            "type": report_type,
+            "cycle": cycle,
+            "cycle_label": budget_payload["cycle_label"],
+            "items": list(totals.values()),
         }
     return {
         "type": "category",
         "cycle": cycle,
-        "items": _DUMMY_BUDGETS["categories"],
+        "cycle_label": budget_payload["cycle_label"],
+        "items": budget_payload["categories"],
     }
 
 
@@ -325,7 +347,7 @@ def root() -> dict:
     return {
         "service": "baymax-api",
         "status": "ok",
-        "message": "Dummy API surface is running.",
+        "message": "In-memory expense calculations are running.",
     }
 
 
@@ -339,131 +361,132 @@ def parse_expense(payload: ParseExpenseRequest) -> ExpenseDraft:
         category=_extract_category(description),
         flags=_extract_flags(raw_text),
         goal_candidates=_goal_candidates(raw_text),
-        notes="Dummy parse result generated by the API server.",
+        notes="Prototype parse result generated by the API server.",
     )
 
 
 @app.post("/expenses")
 def create_expense(payload: CreateExpenseRequest) -> dict:
+    category = _normalized_name(payload.category) if payload.category else None
+    if category and category not in _CATEGORY_BUDGETS:
+        _CATEGORY_BUDGETS[category] = None
+
     expense = {
         "id": f"exp-{uuid4().hex[:8]}",
         "household_id": "household-1",
         "user_id": payload.user_id or "user-1",
-        "cycle": "current",
         "amount": payload.amount,
         "description": payload.description,
-        "category": payload.category,
-        "flags": payload.flags,
-        "goals": payload.goals,
+        "category": category,
+        "flags": [_normalized_name(flag) for flag in payload.flags],
+        "goals": [_canonical_goal_name(goal) for goal in payload.goals],
         "notes": payload.notes,
         "date": str(payload.date or datetime.now(timezone.utc).date()),
     }
-    _DUMMY_EXPENSES.append(expense)
-    return expense
+    _EXPENSES.append(expense)
+    return deepcopy(expense)
 
 
 @app.patch("/expenses/{expense_id}")
 def update_expense(expense_id: str, payload: UpdateExpenseRequest) -> dict:
-    for expense in _DUMMY_EXPENSES:
-        if expense["id"] == expense_id:
-            updates = payload.model_dump(exclude_unset=True)
-            if "date" in updates and updates["date"] is not None:
-                updates["date"] = str(updates["date"])
-            expense.update(updates)
-            return expense
+    for expense in _EXPENSES:
+        if expense["id"] != expense_id:
+            continue
+
+        updates = payload.model_dump(exclude_unset=True)
+        if "date" in updates and updates["date"] is not None:
+            updates["date"] = str(updates["date"])
+        if "category" in updates and updates["category"] is not None:
+            updates["category"] = _normalized_name(updates["category"])
+            _CATEGORY_BUDGETS.setdefault(updates["category"], None)
+        if "flags" in updates and updates["flags"] is not None:
+            updates["flags"] = [_normalized_name(flag) for flag in updates["flags"]]
+        if "goals" in updates and updates["goals"] is not None:
+            updates["goals"] = [_canonical_goal_name(goal) for goal in updates["goals"]]
+        expense.update(updates)
+        return deepcopy(expense)
     raise HTTPException(status_code=404, detail="Expense not found")
 
 
 @app.get("/expenses")
 def list_expenses(
     cycle: str = Query(default="current"),
-    category: str | None = Query(default=None),
+    category: Optional[str] = Query(default=None),
 ) -> dict:
-    expenses = [expense for expense in _DUMMY_EXPENSES if expense["cycle"] == cycle]
+    expenses = _expenses_for_cycle(cycle)
     if category:
-        expenses = [expense for expense in expenses if expense["category"] == category]
+        normalized_category = _normalized_name(category)
+        expenses = [
+            expense
+            for expense in expenses
+            if expense.get("category") and _normalized_name(expense["category"]) == normalized_category
+        ]
     return {"cycle": cycle, "count": len(expenses), "items": deepcopy(expenses)}
 
 
 @app.get("/budgets")
-def get_budgets() -> dict:
-    return deepcopy(_DUMMY_BUDGETS)
+def get_budgets(cycle: str = Query(default="current")) -> dict:
+    return _budget_payload(cycle)
 
 
 @app.put("/budgets/{category_name}")
 def set_budget(category_name: str, payload: SetBudgetRequest) -> dict:
-    normalized_name = _normalized_budget_name(category_name)
-    category = _budget_category(normalized_name)
-
-    if category is None:
-        category = _make_budget_category(normalized_name, payload.amount)
-        _DUMMY_BUDGETS["categories"].append(category)
+    normalized_name = _normalized_name(category_name)
+    if normalized_name not in _CATEGORY_BUDGETS:
+        _CATEGORY_BUDGETS[normalized_name] = payload.amount
         action = "created"
         previous_budget = None
     else:
-        previous_budget = category.get("budget_amount")
+        previous_budget = _CATEGORY_BUDGETS[normalized_name]
         action = "set" if previous_budget is None or previous_budget == payload.amount else "updated"
-        category["budget_amount"] = payload.amount
+        _CATEGORY_BUDGETS[normalized_name] = payload.amount
 
-    _recalculate_budget_totals()
-    return {
-        "action": action,
-        "category": deepcopy(category),
-        "previous_budget": previous_budget,
-    }
+    category = _category_summary(normalized_name, _expenses_for_cycle("current"))
+    return {"action": action, "category": category, "previous_budget": previous_budget}
 
 
 @app.delete("/budgets/{category_name}")
 def remove_budget(category_name: str) -> dict:
-    normalized_name = _normalized_budget_name(category_name)
-    category = _budget_category(normalized_name)
-    if category is None:
+    normalized_name = _normalized_name(category_name)
+    if normalized_name not in _CATEGORY_BUDGETS:
         return {"action": "missing", "category_name": normalized_name}
 
-    previous_budget = category.get("budget_amount")
+    previous_budget = _CATEGORY_BUDGETS[normalized_name]
+    category = _category_summary(normalized_name, _expenses_for_cycle("current"))
     if previous_budget is None:
-        return {"action": "already_removed", "category": deepcopy(category)}
+        return {"action": "already_removed", "category": category}
 
-    category["budget_amount"] = None
-    _recalculate_budget_totals()
-    return {
-        "action": "removed",
-        "category": deepcopy(category),
-        "previous_budget": previous_budget,
-    }
+    _CATEGORY_BUDGETS[normalized_name] = None
+    category = _category_summary(normalized_name, _expenses_for_cycle("current"))
+    return {"action": "removed", "category": category, "previous_budget": previous_budget}
 
 
 @app.get("/goals/{goal_id}/summary")
 def get_goal_summary(goal_id: str, cycle: str = Query(default="current")) -> dict:
-    goal = _DUMMY_GOALS.get(goal_id)
-    if goal is None:
-        raise HTTPException(status_code=404, detail="Goal not found")
-    response = deepcopy(goal)
-    response["cycle"] = cycle
-    response["cycle_label"] = _DUMMY_BUDGETS["cycle_label"]
-    return response
+    return _goal_summary(goal_id, cycle)
 
 
 @app.post("/ask", response_model=AskResponse)
 def ask_question(payload: AskRequest) -> AskResponse:
     question = payload.question.strip()
     lowered = question.lower()
+    budget_payload = _budget_payload(payload.cycle)
 
     if lowered == "how much on groceries this cycle?":
-        groceries = _budget_category("groceries")
+        groceries = next(
+            (category for category in budget_payload["categories"] if category["name"] == "groceries"),
+            None,
+        )
         if groceries is None:
-            raise HTTPException(status_code=500, detail="Groceries summary unavailable")
-        budget_amount = groceries.get("budget_amount")
-        spent = float(groceries.get("spent") or 0.0)
-        count = int(groceries.get("expense_count") or 0)
+            raise HTTPException(status_code=404, detail="Groceries category not found")
+        budget_amount = groceries["budget_amount"]
+        spent = float(groceries["spent"])
+        count = int(groceries["expense_count"])
         if budget_amount is None:
             answer = f"Groceries: ${spent:.2f} — {count} expenses"
         else:
             percent = round((spent / float(budget_amount)) * 100) if budget_amount else 0
-            answer = (
-                f"Groceries: ${spent:.2f} of ${float(budget_amount):.2f} ({percent}%)"
-                f" — {count} expenses"
-            )
+            answer = f"Groceries: ${spent:.2f} of ${float(budget_amount):.2f} ({percent}%) — {count} expenses"
         return AskResponse(
             answer=answer,
             cycle=payload.cycle,
@@ -477,15 +500,17 @@ def ask_question(payload: AskRequest) -> AskResponse:
         )
 
     if lowered == "what did we put toward the resilient kid goal this cycle?":
-        goal = deepcopy(_DUMMY_GOALS["goal-resilient-kid"])
-        entries = goal.get("cycle_entries") or []
+        goal = _goal_summary("goal-resilient-kid", payload.cycle)
         details = ", ".join(
-            f"{entry['description']} ${float(entry['amount']):.0f}" for entry in entries
+            f"{entry['description']} ${float(entry['amount']):.0f}"
+            for entry in goal["cycle_entries"]
         )
         answer = (
             f"${float(goal['cycle_contributions']):.2f} across "
-            f"{int(goal['cycle_expense_count'])} expenses — {details}"
+            f"{int(goal['cycle_expense_count'])} expenses"
         )
+        if details:
+            answer += f" — {details}"
         return AskResponse(
             answer=answer,
             cycle=payload.cycle,
@@ -494,11 +519,11 @@ def ask_question(payload: AskRequest) -> AskResponse:
                 "goal_id": goal["id"],
                 "goal_name": goal["name"],
                 "cycle_contributions": goal["cycle_contributions"],
-                "cycle_entries": entries,
+                "cycle_entries": goal["cycle_entries"],
             },
         )
 
-    totals = _DUMMY_BUDGETS["totals"]
+    totals = budget_payload["totals"]
     return AskResponse(
         answer=(
             f"You have spent ${float(totals['spent']):.2f} across budgeted categories this cycle, "

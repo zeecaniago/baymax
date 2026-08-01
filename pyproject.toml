@@ -1,0 +1,4 @@
+[tool.ruff.lint]
+# Pydantic evaluates model annotations on Python 3.9 at runtime. Keep Optional
+# annotations in server models so the documented `python3` workflow works there.
+ignore = ["UP045"]
