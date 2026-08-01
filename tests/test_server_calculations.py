@@ -130,6 +130,35 @@ class ServerCalculationTests(unittest.TestCase):
         self.assertEqual(previous["spent"], 200.0)
         self.assertEqual(previous["expense_count"], 1)
 
+    def test_single_word_descriptions_create_reusable_categories(self) -> None:
+        coffee_draft = baymax_api.parse_expense(
+            baymax_api.ParseExpenseRequest(raw_text="$12 coffee, one-off")
+        )
+        self.assertEqual(coffee_draft.category, "coffee")
+
+        baymax_api.create_expense(
+            baymax_api.CreateExpenseRequest(
+                amount=12.0,
+                description=coffee_draft.description,
+                category=coffee_draft.category,
+                date=self._current_cycle_date(),
+            )
+        )
+
+        coffee_follow_up = baymax_api.parse_expense(
+            baymax_api.ParseExpenseRequest(raw_text="$10 coffee beans")
+        )
+        education_draft = baymax_api.parse_expense(
+            baymax_api.ParseExpenseRequest(raw_text="$100 education")
+        )
+        parking_draft = baymax_api.parse_expense(
+            baymax_api.ParseExpenseRequest(raw_text="$22 parking downtown")
+        )
+
+        self.assertEqual(coffee_follow_up.category, "coffee")
+        self.assertEqual(education_draft.category, "education")
+        self.assertIsNone(parking_draft.category)
+
 
 if __name__ == "__main__":
     unittest.main()

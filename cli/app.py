@@ -95,11 +95,12 @@ class BaymaxCli:
             self.pending_budget_amount = 400.0
             return ["Last 3 cycles: $380, $410, $395 \u2014 avg $395", "Suggest $400/cycle. Set it?"]
 
-        if lowered == "report groceries":
-            return self._report_groceries()
-
         if lowered == "report goal resilient kid":
             return self._report_goal_summary("resilient kid")
+
+        report_match = re.fullmatch(r"report\s+(.+?)", raw, re.IGNORECASE)
+        if report_match:
+            return self._report_category(report_match.group(1))
 
         if lowered == "how much on groceries this cycle?":
             return self._ask_question(raw)
@@ -480,17 +481,16 @@ class BaymaxCli:
         print("Baymax API returned an invalid budget response.")
         return []
 
-    def _report_groceries(self) -> list[str]:
+    def _report_category(self, category_name: str) -> list[str]:
         try:
             report = self.api.get_reports(report_type="category")
         except BaymaxApiError as exc:
             print(exc)
             return []
 
-        category = self._find_named_item(report.get("items"), "groceries")
+        category = self._find_named_item(report.get("items"), category_name)
         if category is None:
-            print("Baymax API didn't return a groceries report.")
-            return []
+            return [f"No category called [{self._normalize_category_name(category_name)}] yet."]
         return self._format_category_report(report, category)
 
     def _report_goal_summary(self, goal_alias: str) -> list[str]:

@@ -151,6 +151,13 @@ def _extract_category(description: str) -> Optional[str]:
         return "eating out"
     if "rent" in lowered:
         return "rent"
+
+    for category in sorted(_CATEGORY_BUDGETS, key=len, reverse=True):
+        if re.search(rf"(?<!\w){re.escape(category)}(?!\w)", lowered):
+            return category
+
+    if re.fullmatch(r"[a-z]+", lowered):
+        return _normalized_name(description)
     return None
 
 

@@ -71,8 +71,10 @@ Second one gets no category — "parking downtown" doesn't match anything learne
 
 ```
 > $12 coffee, one-off
-✓ $12.00 — coffee  #one-off
+✓ $12.00 — coffee  [Coffee]  #one-off
 ```
+
+Single-word descriptions such as `coffee` and `education` become reusable categories. A multi-word description stays uncategorized unless it matches a category the server already knows.
 
 ## Optimistic parse, then a correction
 
@@ -182,7 +184,7 @@ Use this as a manual verification script after starting the server and the CLI:
 1. `> $45 groceries`
    Expect: `✓ $45.00 — groceries  [Groceries]`
 2. `> $12 coffee, one-off`
-   Expect: `✓ $12.00 — coffee  #one-off`
+   Expect: `✓ $12.00 — coffee  [Coffee]  #one-off`
 3. `> $40 books, learning goal`
    `> 1`
    Expect the numbered chooser, then `✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid`

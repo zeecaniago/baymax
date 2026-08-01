@@ -48,7 +48,7 @@ Expense logging goes through the server:
 ✓ $45.00 — groceries  [Groceries]
 
 > $12 coffee, one-off
-✓ $12.00 — coffee  #one-off
+✓ $12.00 — coffee  [Coffee]  #one-off
 
 > $50 karate class, kid goal
 ✓ $50.00 — karate class  [Kids]  → Raise a strong, resilient kid
@@ -88,6 +88,8 @@ Eating Out doesn't have a budget this cycle.
 > what did we put toward the resilient kid goal this cycle?
 $90.00 across 2 expenses — karate class $50, books $40
 ```
+
+Single-word descriptions such as `coffee` and `education` become reusable categories. Multi-word descriptions stay uncategorized unless they match a category the server already knows.
 
 Corrections also go through the server:
 
@@ -134,7 +136,7 @@ Use the README as a manual test script while the server is running:
    Expect: `✓ $45.00 — groceries  [Groceries]`
 2. Parse with a flag:
    `> $12 coffee, one-off`
-   Expect: `✓ $12.00 — coffee  #one-off`
+   Expect: `✓ $12.00 — coffee  [Coffee]  #one-off`
 3. Exercise goal disambiguation:
    `> $40 books, learning goal`
    `> 1`
