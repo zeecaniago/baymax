@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date as DateType
-from datetime import datetime, timezone
+from datetime import date as DateType, datetime, timezone
 
 from fastapi import HTTPException
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Optional
 
-
 # These are initial configuration values, not report fixtures. Spending, counts,
 # reports, and goal progress are all calculated from EXPENSES below.
 DEFAULT_CATEGORY_BUDGETS: dict[str, Optional[float]] = {
