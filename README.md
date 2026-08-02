@@ -15,6 +15,21 @@ python3 -m pip install -r server/requirements.txt
 
 The CLI currently uses only the Python standard library, so it does not need a separate install step.
 
+### Development checks
+
+Install the development tools and enable the repository's Git hooks once per checkout:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+pre-commit install
+```
+
+The pre-commit hook runs `python3 -m ruff check` against staged Python files and blocks a commit when lint errors are found. You can run the same check manually with:
+
+```bash
+python3 -m ruff check cli server tests
+```
+
 ### 2. Start the server
 
 In one terminal:

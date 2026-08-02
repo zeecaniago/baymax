@@ -2,3 +2,8 @@
 # Pydantic evaluates model annotations on Python 3.9 at runtime. Keep Optional
 # annotations in server models so the documented `python3` workflow works there.
 ignore = ["UP045"]
+
+[tool.ruff.lint.isort]
+# Keep the application facade's compatibility re-exports grouped by module.
+combine-as-imports = true
+split-on-trailing-comma = false
