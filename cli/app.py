@@ -21,6 +21,7 @@ GOAL_IDS = {
 class Expense:
     amount: float
     description: str
+    merchant: str | None = None
     category: str | None = None
     flags: list[str] = field(default_factory=list)
     goal: str | None = None
@@ -319,6 +320,7 @@ class BaymaxCli:
         created = self.api.create_expense(
             amount=float(parsed["amount"]),
             description=parsed["description"],
+            merchant=parsed.get("merchant"),
             category=parsed.get("category"),
             flags=list(parsed.get("flags") or []),
             goals=goals,
@@ -359,6 +361,7 @@ class BaymaxCli:
         return Expense(
             amount=float(parsed["amount"]),
             description=parsed["description"],
+            merchant=self._normalize_merchant_name(parsed.get("merchant")),
             category=self._normalize_api_category(parsed.get("category")),
             flags=list(parsed.get("flags") or []),
             goal=goal,
@@ -370,6 +373,7 @@ class BaymaxCli:
         return Expense(
             amount=float(payload["amount"]),
             description=payload["description"],
+            merchant=self._normalize_merchant_name(payload.get("merchant")),
             category=self._normalize_api_category(payload.get("category")),
             flags=list(payload.get("flags") or []),
             goal=goal,
@@ -388,8 +392,10 @@ class BaymaxCli:
 
     def _format_expense(self, expense: Expense) -> str:
         line = f"\u2713 ${expense.amount:.2f} \u2014 {expense.description}"
+        if expense.merchant:
+            line += self._format_merchant(expense.merchant)
         if expense.category:
-            line += self._format_category(expense.category)
+            line += self._format_category(expense.category, follows_merchant=bool(expense.merchant))
         if expense.flags:
             line += "  " + " ".join(f"#{flag}" for flag in expense.flags)
         if expense.goal:
@@ -398,14 +404,21 @@ class BaymaxCli:
 
     def _format_update(self, expense: Expense) -> str:
         line = f"\u2713 updated \u2014 ${expense.amount:.2f} \u2014 {expense.description}"
+        if expense.merchant:
+            line += self._format_merchant(expense.merchant)
         if expense.category:
-            line += self._format_category(expense.category)
+            line += self._format_category(expense.category, follows_merchant=bool(expense.merchant))
         if expense.goal:
             line += f"  \u2192 {expense.goal}"
         return line
 
-    def _format_category(self, category: str | None) -> str:
-        return f"  [{category}]" if category else ""
+    def _format_category(self, category: str | None, *, follows_merchant: bool = False) -> str:
+        if not category:
+            return ""
+        return f"{' ' if follows_merchant else '  '}[{category}]"
+
+    def _format_merchant(self, merchant: str) -> str:
+        return f"  [{merchant}]"
 
     def _normalize_category_name(self, raw_category: str) -> str:
         category = " ".join(raw_category.strip().split())
@@ -414,6 +427,17 @@ class BaymaxCli:
             "eating out": "Eating Out",
         }
         return aliases.get(category.lower(), category.title())
+
+    def _normalize_merchant_name(self, merchant: str | None) -> str | None:
+        if merchant is None:
+            return None
+        words = merchant.strip().split()
+        if not words:
+            return None
+        return " ".join(
+            word if any(char.isupper() for char in word) else word.capitalize()
+            for word in words
+        )
 
     def _set_category_budget(self, category: str, amount: float) -> list[str]:
         try:

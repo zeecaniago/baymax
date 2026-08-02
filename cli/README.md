@@ -74,6 +74,18 @@ Second one gets no category — "parking downtown" doesn't match anything learne
 ✓ $12.00 — coffee  [Coffee]  #one-off
 ```
 
+## Adding a merchant
+
+Put the merchant after a recognized category. Multi-word merchant names are kept together and appear before the category tag:
+
+```
+> $45 groceries fresh street
+✓ $45.00 — groceries  [Fresh Street] [Groceries]
+
+> $15 coffee starbuck, one-off
+✓ $15.00 — coffee  [Starbuck] [Coffee]  #one-off
+```
+
 Single-word descriptions such as `coffee` and `education` become reusable categories. A multi-word description stays uncategorized unless it matches a category the server already knows.
 
 ## Optimistic parse, then a correction

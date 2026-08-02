@@ -5,6 +5,10 @@ from typing import Optional
 
 from .store import CATEGORY_BUDGETS, GOAL_DEFINITIONS
 
+# "coffee" is a reusable single-word category in this prototype even before a
+# user has logged it once, so it can be followed by a merchant immediately.
+MERCHANT_CATEGORY_NAMES = {"coffee"}
+
 
 def normalized_name(name: str) -> str:
     return " ".join(name.strip().split()).lower()
@@ -28,9 +32,47 @@ def extract_amount(raw_text: str) -> float:
 
 
 def extract_description(raw_text: str) -> str:
+    return _expense_text(raw_text)
+
+
+def extract_expense_details(raw_text: str) -> tuple[str, Optional[str], Optional[str]]:
+    """Return the description, merchant, and category inferred from quick-log text.
+
+    A recognized category at the start of an entry may be followed by a
+    merchant. Anchoring the category at the beginning keeps a phrase such as
+    ``parking downtown`` as a single description rather than splitting it at
+    an arbitrary word boundary.
+    """
+    expense_text = _expense_text(raw_text)
+    category, category_text = _leading_category(expense_text)
+    if category is None or category_text is None:
+        return expense_text, None, extract_category(expense_text)
+
+    merchant = expense_text[len(category_text) :].strip()
+    if not merchant:
+        return expense_text, None, category
+    return category_text, merchant, category
+
+
+def _expense_text(raw_text: str) -> str:
     body = re.sub(r"^\d{1,2}/\d{1,2}\s+", "", raw_text).strip()
     body = re.sub(r"^\$\d+(?:\.\d{1,2})?\s*", "", body).strip()
     return body.split(",")[0].strip() or raw_text.strip()
+
+
+def _leading_category(description: str) -> tuple[Optional[str], Optional[str]]:
+    """Find a known category prefix, returning its normalized name and text."""
+    available_categories = set(CATEGORY_BUDGETS) | MERCHANT_CATEGORY_NAMES
+    for category in sorted(available_categories, key=len, reverse=True):
+        match = re.match(rf"{re.escape(category)}(?:\s|$)", description, re.IGNORECASE)
+        if match:
+            return normalized_name(category), match.group(0).strip()
+
+    # Both spellings belong to the groceries budget.
+    match = re.match(r"grocer(?:y|ies)(?:\s|$)", description, re.IGNORECASE)
+    if match:
+        return "groceries", match.group(0).strip()
+    return None, None
 
 
 def extract_flags(raw_text: str) -> list[str]:
