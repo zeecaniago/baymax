@@ -42,7 +42,7 @@ Parse an expense before saving it:
 ```bash
 curl -X POST http://127.0.0.1:8000/expenses/parse \
   -H 'Content-Type: application/json' \
-  -d '{"raw_text":"$45 groceries, one-off"}'
+  -d '{"raw_text":"$45 groceries fresh street, one-off"}'
 ```
 
 Create an expense:
@@ -50,7 +50,7 @@ Create an expense:
 ```bash
 curl -X POST http://127.0.0.1:8000/expenses \
   -H 'Content-Type: application/json' \
-  -d '{"amount":45,"description":"groceries","category":"groceries","flags":["one-off"]}'
+  -d '{"amount":45,"description":"groceries","merchant":"fresh street","category":"groceries","flags":["one-off"]}'
 ```
 
 Set a budget and read its remaining balance:

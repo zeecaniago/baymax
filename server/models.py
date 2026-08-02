@@ -14,6 +14,7 @@ class ParseExpenseRequest(BaseModel):
 class ExpenseDraft(BaseModel):
     amount: float
     description: str
+    merchant: Optional[str] = None
     category: Optional[str] = None
     flags: list[str] = Field(default_factory=list)
     goal_candidates: list[str] = Field(default_factory=list)
@@ -23,6 +24,7 @@ class ExpenseDraft(BaseModel):
 class CreateExpenseRequest(BaseModel):
     amount: float
     description: str
+    merchant: Optional[str] = None
     category: Optional[str] = None
     flags: list[str] = Field(default_factory=list)
     goals: list[str] = Field(default_factory=list)
@@ -34,6 +36,7 @@ class CreateExpenseRequest(BaseModel):
 class UpdateExpenseRequest(BaseModel):
     amount: Optional[float] = None
     description: Optional[str] = None
+    merchant: Optional[str] = None
     category: Optional[str] = None
     flags: Optional[list[str]] = None
     goals: Optional[list[str]] = None

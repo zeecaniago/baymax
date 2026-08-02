@@ -51,6 +51,7 @@ class BaymaxApiClient:
         *,
         amount: float,
         description: str,
+        merchant: str | None = None,
         category: str | None = None,
         flags: list[str] | None = None,
         goals: list[str] | None = None,
@@ -59,6 +60,7 @@ class BaymaxApiClient:
         payload = {
             "amount": amount,
             "description": description,
+            "merchant": merchant,
             "category": category,
             "flags": flags or [],
             "goals": goals or [],
@@ -72,6 +74,7 @@ class BaymaxApiClient:
         *,
         amount: float | None = None,
         description: str | None = None,
+        merchant: str | None = None,
         category: str | None = None,
         flags: list[str] | None = None,
         goals: list[str] | None = None,
@@ -80,6 +83,7 @@ class BaymaxApiClient:
         payload = {
             "amount": amount,
             "description": description,
+            "merchant": merchant,
             "category": category,
             "flags": flags,
             "goals": goals,

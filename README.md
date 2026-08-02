@@ -62,6 +62,9 @@ Expense logging goes through the server:
 > $45 groceries
 ✓ $45.00 — groceries  [Groceries]
 
+> $45 groceries fresh street
+✓ $45.00 — groceries  [Fresh Street] [Groceries]
+
 > $12 coffee, one-off
 ✓ $12.00 — coffee  [Coffee]  #one-off
 
@@ -105,6 +108,16 @@ $90.00 across 2 expenses — karate class $50, books $40
 ```
 
 Single-word descriptions such as `coffee` and `education` become reusable categories. Multi-word descriptions stay uncategorized unless they match a category the server already knows.
+
+For a recognized category, add the merchant after the category name. Merchant names may contain spaces and appear before the category tag:
+
+```text
+> $55 groceries amazon
+✓ $55.00 — groceries  [Amazon] [Groceries]
+
+> $15 coffee starbuck, one-off
+✓ $15.00 — coffee  [Starbuck] [Coffee]  #one-off
+```
 
 Corrections also go through the server:
 
