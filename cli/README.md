@@ -67,26 +67,38 @@ Use the up arrow to recall previous commands and the down arrow to move forward 
 ```
 Second one gets no category — "parking downtown" doesn't match anything learned yet, and that's a fine terminal state, not a gap to flag.
 
+Capture comes before organization: a user never needs to configure categories, merchants, or budgets before saving a purchase. Baymax can infer familiar categories like groceries, but a plain description such as `coffee` stays uncategorized until the user supplies or accepts more detail.
+
 ## Adding a flag
 
 ```
 > $12 coffee, one-off
-✓ $12.00 — coffee  [Coffee]  #one-off
+✓ $12.00 — coffee  #one-off · excluded from budget
 ```
 
-## Adding a merchant
+A one-off remains visible in purchase history but does not consume a category budget.
 
-Put the merchant after a recognized category. Multi-word merchant names are kept together and appear before the category tag:
+## Adding detail as the habit grows
+
+The middle form records a merchant without requiring a category:
 
 ```
+> $45 coffee fresh street
+✓ $45.00 — coffee  [Fresh Street]
+
 > $45 groceries fresh street
 ✓ $45.00 — groceries  [Fresh Street] [Groceries]
 
-> $15 coffee starbuck, one-off
-✓ $15.00 — coffee  [Starbuck] [Coffee]  #one-off
+> $45 coffee fresh street groceries
+✓ $45.00 — coffee  [Fresh Street] [Groceries]
 ```
 
-Single-word descriptions such as `coffee` and `education` become reusable categories. A multi-word description stays uncategorized unless it matches a category the server already knows.
+For unambiguous power-user input, use optional annotations:
+
+```
+> $45 coffee @fresh street #groceries
+✓ $45.00 — coffee  [Fresh Street] [Groceries]
+```
 
 ## Optimistic parse, then a correction
 

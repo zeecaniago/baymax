@@ -65,8 +65,14 @@ Expense logging goes through the server:
 > $45 groceries fresh street
 ✓ $45.00 — groceries  [Fresh Street] [Groceries]
 
+> $45 coffee fresh street
+✓ $45.00 — coffee  [Fresh Street]
+
+> $45 coffee fresh street groceries
+✓ $45.00 — coffee  [Fresh Street] [Groceries]
+
 > $12 coffee, one-off
-✓ $12.00 — coffee  [Coffee]  #one-off
+✓ $12.00 — coffee  #one-off · excluded from budget
 
 > $50 karate class, kid goal
 ✓ $50.00 — karate class  [Kids]  → Raise a strong, resilient kid
@@ -107,17 +113,22 @@ Eating Out doesn't have a budget this cycle.
 $90.00 across 2 expenses — karate class $50, books $40
 ```
 
-Single-word descriptions such as `coffee` and `education` become reusable categories. Multi-word descriptions stay uncategorized unless they match a category the server already knows.
+Every purchase can be saved with only an amount and description. Baymax infers familiar categories such as groceries, but single-word descriptions like `coffee` and `education` do not create categories or budgets on their own.
 
-For a recognized category, add the merchant after the category name. Merchant names may contain spaces and appear before the category tag:
+Add optional detail as the habit grows. For a recognized category, place the merchant after the category name. An expert can also append a known category, or use `@merchant` and `#category` to remove any ambiguity:
 
 ```text
 > $55 groceries amazon
 ✓ $55.00 — groceries  [Amazon] [Groceries]
 
-> $15 coffee starbuck, one-off
-✓ $15.00 — coffee  [Starbuck] [Coffee]  #one-off
+> $15 coffee fresh street groceries, one-off
+✓ $15.00 — coffee  [Fresh Street] [Groceries]  #one-off · excluded from budget
+
+> $15 coffee @fresh street #groceries
+✓ $15.00 — coffee  [Fresh Street] [Groceries]
 ```
+
+One-off purchases remain in spending history but do not reduce their category's budget balance.
 
 Corrections also go through the server:
 
@@ -164,7 +175,7 @@ Use the README as a manual test script while the server is running:
    Expect: `✓ $45.00 — groceries  [Groceries]`
 2. Parse with a flag:
    `> $12 coffee, one-off`
-   Expect: `✓ $12.00 — coffee  [Coffee]  #one-off`
+   Expect: `✓ $12.00 — coffee  #one-off · excluded from budget`
 3. Exercise goal disambiguation:
    `> $40 books, learning goal`
    `> 1`

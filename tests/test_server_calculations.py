@@ -130,11 +130,11 @@ class ServerCalculationTests(unittest.TestCase):
         self.assertEqual(previous["spent"], 200.0)
         self.assertEqual(previous["expense_count"], 1)
 
-    def test_single_word_descriptions_create_reusable_categories(self) -> None:
+    def test_single_word_descriptions_do_not_require_a_category(self) -> None:
         coffee_draft = baymax_api.parse_expense(
             baymax_api.ParseExpenseRequest(raw_text="$12 coffee, one-off")
         )
-        self.assertEqual(coffee_draft.category, "coffee")
+        self.assertIsNone(coffee_draft.category)
 
         baymax_api.create_expense(
             baymax_api.CreateExpenseRequest(
@@ -155,9 +155,37 @@ class ServerCalculationTests(unittest.TestCase):
             baymax_api.ParseExpenseRequest(raw_text="$22 parking downtown")
         )
 
-        self.assertEqual(coffee_follow_up.category, "coffee")
-        self.assertEqual(education_draft.category, "education")
+        self.assertIsNone(coffee_follow_up.category)
+        self.assertIsNone(education_draft.category)
         self.assertIsNone(parking_draft.category)
+
+    def test_one_off_purchase_stays_in_history_but_does_not_consume_budget(self) -> None:
+        baymax_api.create_expense(
+            baymax_api.CreateExpenseRequest(
+                amount=100.0,
+                description="Weekly groceries",
+                category="groceries",
+                date=self._current_cycle_date(),
+            )
+        )
+        one_off = baymax_api.create_expense(
+            baymax_api.CreateExpenseRequest(
+                amount=45.0,
+                description="Gift basket",
+                category="groceries",
+                flags=["one-off"],
+                date=self._current_cycle_date(),
+            )
+        )
+
+        category = self._category(baymax_api.get_budgets("current"), "groceries")
+
+        self.assertEqual(one_off["budget_treatment"], "excluded")
+        self.assertEqual(category["spent"], 100.0)
+        self.assertEqual(category["total_spent"], 145.0)
+        self.assertEqual(category["excluded_spent"], 45.0)
+        self.assertEqual(category["average_amount"], 72.5)
+        self.assertEqual(category["remaining"], 300.0)
 
 
 if __name__ == "__main__":

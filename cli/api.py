@@ -54,6 +54,7 @@ class BaymaxApiClient:
         merchant: str | None = None,
         category: str | None = None,
         flags: list[str] | None = None,
+        budget_treatment: str = "included",
         goals: list[str] | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
@@ -63,6 +64,7 @@ class BaymaxApiClient:
             "merchant": merchant,
             "category": category,
             "flags": flags or [],
+            "budget_treatment": budget_treatment,
             "goals": goals or [],
             "notes": notes,
         }

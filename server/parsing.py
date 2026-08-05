@@ -5,9 +5,10 @@ from typing import Optional
 
 from .store import CATEGORY_BUDGETS, GOAL_DEFINITIONS
 
-# "coffee" is a reusable single-word category in this prototype even before a
-# user has logged it once, so it can be followed by a merchant immediately.
-MERCHANT_CATEGORY_NAMES = {"coffee"}
+# These short purchase descriptions have a natural merchant slot. They let a
+# person start with a quick log ("coffee") and add merchant detail later
+# ("coffee fresh street") without first setting up categories.
+MERCHANTABLE_DESCRIPTIONS = {"coffee"}
 
 
 def normalized_name(name: str) -> str:
@@ -43,15 +44,29 @@ def extract_expense_details(raw_text: str) -> tuple[str, Optional[str], Optional
     ``parking downtown`` as a single description rather than splitting it at
     an arbitrary word boundary.
     """
-    expense_text = _expense_text(raw_text)
+    expense_text, tagged_merchant, tagged_category = _extract_annotations(_expense_text(raw_text))
+    if tagged_category:
+        category = normalized_name(tagged_category)
+        description, merchant = _split_description_and_merchant(expense_text)
+        return description, tagged_merchant or merchant, category
+
+    trailing_category = _trailing_category(expense_text)
+    if trailing_category is not None:
+        category, category_text = trailing_category
+        purchase_text = expense_text[: -len(category_text)].strip()
+        if purchase_text:
+            description, merchant = _split_description_and_merchant(purchase_text)
+            return description, tagged_merchant or merchant, category
+
     category, category_text = _leading_category(expense_text)
     if category is None or category_text is None:
-        return expense_text, None, extract_category(expense_text)
+        description, merchant = _split_description_and_merchant(expense_text)
+        return description, tagged_merchant or merchant, extract_category(description)
 
     merchant = expense_text[len(category_text) :].strip()
     if not merchant:
-        return expense_text, None, category
-    return category_text, merchant, category
+        return expense_text, tagged_merchant, category
+    return category_text, tagged_merchant or merchant, category
 
 
 def _expense_text(raw_text: str) -> str:
@@ -62,7 +77,7 @@ def _expense_text(raw_text: str) -> str:
 
 def _leading_category(description: str) -> tuple[Optional[str], Optional[str]]:
     """Find a known category prefix, returning its normalized name and text."""
-    available_categories = set(CATEGORY_BUDGETS) | MERCHANT_CATEGORY_NAMES
+    available_categories = set(CATEGORY_BUDGETS)
     for category in sorted(available_categories, key=len, reverse=True):
         match = re.match(rf"{re.escape(category)}(?:\s|$)", description, re.IGNORECASE)
         if match:
@@ -73,6 +88,34 @@ def _leading_category(description: str) -> tuple[Optional[str], Optional[str]]:
     if match:
         return "groceries", match.group(0).strip()
     return None, None
+
+
+def _trailing_category(description: str) -> tuple[str, str] | None:
+    """Find an optional expert-supplied category at the end of a quick log."""
+    available_categories = set(CATEGORY_BUDGETS) | {"groceries"}
+    for category in sorted(available_categories, key=len, reverse=True):
+        match = re.search(rf"(?:^|\s)({re.escape(category)})$", description, re.IGNORECASE)
+        if match:
+            return normalized_name(category), match.group(1)
+    return None
+
+
+def _extract_annotations(description: str) -> tuple[str, Optional[str], Optional[str]]:
+    """Extract optional @merchant and #category annotations from a quick log."""
+    merchant_match = re.search(r"(?:^|\s)@([^@#]+?)(?=\s[@#]|$)", description)
+    category_match = re.search(r"(?:^|\s)#([^@#]+?)(?=\s[@#]|$)", description)
+    merchant = merchant_match.group(1).strip() if merchant_match else None
+    category = category_match.group(1).strip() if category_match else None
+    unannotated = re.sub(r"(?:^|\s)[@#][^@#]+?(?=\s[@#]|$)", " ", description)
+    return " ".join(unannotated.split()), merchant or None, category or None
+
+
+def _split_description_and_merchant(description: str) -> tuple[str, Optional[str]]:
+    """Use the natural merchant slot only for short, recognizable purchases."""
+    first_word, separator, remainder = description.partition(" ")
+    if first_word.lower() in MERCHANTABLE_DESCRIPTIONS and separator and remainder.strip():
+        return first_word, remainder.strip()
+    return description, None
 
 
 def extract_flags(raw_text: str) -> list[str]:
@@ -104,8 +147,6 @@ def extract_category(description: str) -> Optional[str]:
         if re.search(rf"(?<!\w){re.escape(category)}(?!\w)", lowered):
             return category
 
-    if re.fullmatch(r"[a-z]+", lowered):
-        return normalized_name(description)
     return None
 
 
