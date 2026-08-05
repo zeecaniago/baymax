@@ -24,6 +24,7 @@ class Expense:
     merchant: str | None = None
     category: str | None = None
     flags: list[str] = field(default_factory=list)
+    budget_treatment: str = "included"
     goal: str | None = None
     expense_id: str | None = None
 
@@ -323,6 +324,7 @@ class BaymaxCli:
             merchant=parsed.get("merchant"),
             category=parsed.get("category"),
             flags=list(parsed.get("flags") or []),
+            budget_treatment=parsed.get("budget_treatment") or "included",
             goals=goals,
             notes=parsed.get("notes"),
         )
@@ -364,6 +366,7 @@ class BaymaxCli:
             merchant=self._normalize_merchant_name(parsed.get("merchant")),
             category=self._normalize_api_category(parsed.get("category")),
             flags=list(parsed.get("flags") or []),
+            budget_treatment=parsed.get("budget_treatment") or "included",
             goal=goal,
         )
 
@@ -376,6 +379,7 @@ class BaymaxCli:
             merchant=self._normalize_merchant_name(payload.get("merchant")),
             category=self._normalize_api_category(payload.get("category")),
             flags=list(payload.get("flags") or []),
+            budget_treatment=payload.get("budget_treatment") or "included",
             goal=goal,
             expense_id=payload.get("id"),
         )
@@ -398,6 +402,8 @@ class BaymaxCli:
             line += self._format_category(expense.category, follows_merchant=bool(expense.merchant))
         if expense.flags:
             line += "  " + " ".join(f"#{flag}" for flag in expense.flags)
+        if expense.budget_treatment == "excluded":
+            line += " · excluded from budget"
         if expense.goal:
             line += f"  \u2192 {expense.goal}"
         return line
@@ -588,6 +594,7 @@ class BaymaxCli:
         budget = category.get("budget_amount")
         expense_count = int(category.get("expense_count") or 0)
         average_amount = float(category.get("average_amount") or 0.0)
+        excluded_spent = float(category.get("excluded_spent") or 0.0)
 
         if budget is None:
             summary_line = (
@@ -602,6 +609,9 @@ class BaymaxCli:
                 f"({percent}%) \u00b7 {expense_count} {self._expense_label(expense_count)} \u00b7 "
                 f"avg {self._format_currency(average_amount)}"
             )
+
+        if excluded_spent:
+            summary_line += f" \u00b7 {self._format_currency(excluded_spent)} excluded"
 
         lines = [f"{category_name} \u2014 {cycle_label}", summary_line]
         largest_expenses = category.get("largest_expenses") or []

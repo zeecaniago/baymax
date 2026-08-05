@@ -57,6 +57,31 @@ class BaymaxCliCategoryTests(unittest.TestCase):
         self.assertEqual(api.calls, [("get_reports", {"report_type": "category", "cycle": "current"})])
         self.assertEqual(result, ["No category called [Education] yet."])
 
+    def test_report_makes_budget_excluded_purchases_visible(self) -> None:
+        api = FakeCategoryApiClient()
+        api.report_response["items"] = [
+            {
+                "name": "groceries",
+                "budget_amount": 400.0,
+                "spent": 100.0,
+                "excluded_spent": 45.0,
+                "expense_count": 2,
+                "average_amount": 72.5,
+                "largest_expenses": [],
+            }
+        ]
+        cli = BaymaxCli(api_client=api)
+
+        result = cli.handle("report groceries")
+
+        self.assertEqual(
+            result,
+            [
+                "Groceries — Jul 26–Aug 25",
+                "  $100 of $400 (25%) · 2 expenses · avg $72.5 · $45 excluded",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

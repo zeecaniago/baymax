@@ -70,16 +70,25 @@ def category_summary(name: str, expenses: list[dict]) -> dict:
         if expense.get("category") and normalized_name(expense["category"]) == normalized
     ]
     amounts = [float(expense["amount"]) for expense in matching_expenses]
-    spent = round(sum(amounts), 2)
+    budget_amounts = [
+        float(expense["amount"])
+        for expense in matching_expenses
+        if expense.get("budget_treatment", "included") == "included"
+    ]
+    spent = round(sum(budget_amounts), 2)
+    total_spent = round(sum(amounts), 2)
+    excluded_spent = round(total_spent - spent, 2)
     budget_amount = CATEGORY_BUDGETS.get(normalized)
     largest = sorted(matching_expenses, key=lambda expense: float(expense["amount"]), reverse=True)[:3]
     return {
         "name": normalized,
         "budget_amount": budget_amount,
         "spent": spent,
+        "total_spent": total_spent,
+        "excluded_spent": excluded_spent,
         "remaining": None if budget_amount is None else round(budget_amount - spent, 2),
         "expense_count": len(matching_expenses),
-        "average_amount": round(spent / len(amounts), 2) if amounts else 0.0,
+        "average_amount": round(total_spent / len(amounts), 2) if amounts else 0.0,
         "largest_expenses": [
             {"description": expense["description"], "amount": float(expense["amount"])}
             for expense in largest
@@ -94,12 +103,20 @@ def budget_payload(cycle: str = "current") -> dict:
     budgeted_categories = [category for category in categories if category["budget_amount"] is not None]
     budgeted = round(sum(float(category["budget_amount"]) for category in budgeted_categories), 2)
     spent = round(sum(float(category["spent"]) for category in budgeted_categories), 2)
+    total_spent = round(sum(float(category["total_spent"]) for category in budgeted_categories), 2)
+    excluded_spent = round(sum(float(category["excluded_spent"]) for category in budgeted_categories), 2)
     return {
         "cycle": cycle,
         "cycle_label": cycle_label(start, end_exclusive),
         "currency": "USD",
         "categories": categories,
-        "totals": {"budgeted": budgeted, "spent": spent, "remaining": round(budgeted - spent, 2)},
+        "totals": {
+            "budgeted": budgeted,
+            "spent": spent,
+            "total_spent": total_spent,
+            "excluded_spent": excluded_spent,
+            "remaining": round(budgeted - spent, 2),
+        },
     }
 
 

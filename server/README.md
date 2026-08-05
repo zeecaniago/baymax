@@ -42,7 +42,7 @@ Parse an expense before saving it:
 ```bash
 curl -X POST http://127.0.0.1:8000/expenses/parse \
   -H 'Content-Type: application/json' \
-  -d '{"raw_text":"$45 groceries fresh street, one-off"}'
+  -d '{"raw_text":"$45 coffee fresh street groceries, one-off"}'
 ```
 
 Create an expense:
@@ -50,7 +50,7 @@ Create an expense:
 ```bash
 curl -X POST http://127.0.0.1:8000/expenses \
   -H 'Content-Type: application/json' \
-  -d '{"amount":45,"description":"groceries","merchant":"fresh street","category":"groceries","flags":["one-off"]}'
+  -d '{"amount":45,"description":"coffee","merchant":"fresh street","category":"groceries","flags":["one-off"],"budget_treatment":"excluded"}'
 ```
 
 Set a budget and read its remaining balance:
@@ -77,6 +77,19 @@ curl 'http://127.0.0.1:8000/reports?type=category'
 - `parsing.py` contains natural-language parsing and normalization helpers.
 - `calculations.py` derives cycle, budget, goal, and report data.
 - `store.py` owns the prototype's process-local state and reset helper.
+
+## Progressive purchase capture
+
+Purchases require only an amount and description. Merchant, category, and
+budget treatment are optional details that can be added as the user builds the
+habit:
+
+- `$45 groceries` infers the familiar Groceries category.
+- `$45 coffee fresh street` stores coffee with the Fresh Street merchant but no category.
+- `$45 coffee fresh street groceries` adds the trailing category.
+- `$45 coffee @fresh street #groceries` is the unambiguous annotated form.
+- Adding `, one-off` sets `budget_treatment` to `excluded`: the purchase stays
+  in history but does not reduce that category's budget balance.
 
 ## Prototype limitations
 
