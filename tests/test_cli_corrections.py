@@ -44,7 +44,7 @@ class BaymaxCliCorrectionTests(unittest.TestCase):
             api.calls,
             [("exp-1234", {"amount": 54.0, "goals": None})],
         )
-        self.assertEqual(result, ["✓ updated — $54.00 — groceries  [Groceries]"])
+        self.assertEqual(result, ["✓ updated — $54.00 — groceries  #Groceries"])
         self.assertEqual(cli.last_expense.amount, 54.0)
         self.assertEqual(cli.last_expense.expense_id, "exp-1234")
 
@@ -73,7 +73,7 @@ class BaymaxCliCorrectionTests(unittest.TestCase):
             api.calls,
             [("exp-9999", {"amount": None, "goals": ["Emergency Fund"]})],
         )
-        self.assertEqual(result, ["✓ updated — $18.00 — target  [Shopping]  → Emergency Fund"])
+        self.assertEqual(result, ["✓ updated — $18.00 — target  #Shopping  → Emergency Fund"])
         self.assertEqual(cli.last_expense.goal, "Emergency Fund")
         self.assertEqual(cli.last_expense.expense_id, "exp-9999")
 

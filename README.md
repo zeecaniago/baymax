@@ -60,22 +60,16 @@ Expense logging goes through the server:
 
 ```text
 > $45 groceries
-✓ $45.00 — groceries  [Groceries]
+✓ $45.00 — groceries  #Groceries
 
-> $45 groceries fresh street
-✓ $45.00 — groceries  [Fresh Street] [Groceries]
-
-> $45 coffee fresh street
-✓ $45.00 — coffee  [Fresh Street]
-
-> $45 coffee fresh street groceries
-✓ $45.00 — coffee  [Fresh Street] [Groceries]
+> $45 coffee, m: Fresh Street, c: Groceries
+✓ $45.00 — coffee  @Fresh Street  #Groceries
 
 > $12 coffee, one-off
-✓ $12.00 — coffee  #one-off · excluded from budget
+✓ $12.00 — coffee  !one-off · excluded from budget
 
 > $50 karate class, kid goal
-✓ $50.00 — karate class  [Kids]  → Raise a strong, resilient kid
+✓ $50.00 — karate class  #Kids  → Raise a strong, resilient kid
 ```
 
 Ambiguous goal example:
@@ -85,9 +79,9 @@ Ambiguous goal example:
 Which goal?
   1. Raise a strong, resilient kid
   2. Get promoted this year
-  3. Don't link to a goal
+  0. Don't link to a goal
 > 1
-✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid
+✓ $40.00 — books  #Kids  → Raise a strong, resilient kid
 ```
 
 Server-backed read flows (the exact figures reflect the expenses logged in the running server):
@@ -99,9 +93,10 @@ Groceries — Jun 26–Jul 25
   Largest: Costco $91, Whole Foods $64, Trader Joe's $58
 
 > report goal resilient kid
-Raise a strong, resilient kid
-  This cycle: $90 across 2 expenses
-  All-time: $890 across 14 expenses (since Mar 2026)
+Raise a strong, resilient kid — this cycle
+  $90 across 2 expenses
+  karate class  $50
+  books  $40
 
 > how much on groceries this cycle?
 Groceries: $403.00 of $400.00 (101%) — 15 expenses
@@ -109,23 +104,23 @@ Groceries: $403.00 of $400.00 (101%) — 15 expenses
 > what's left in eating out?
 Eating Out doesn't have a budget this cycle.
 
-> what did we put toward the resilient kid goal this cycle?
-$90.00 across 2 expenses — karate class $50, books $40
+> what did we spend supporting the resilient kid goal this cycle?
+$90.00 of goal-related spending across 2 expenses — karate class $50, books $40
 ```
 
 Every purchase can be saved with only an amount and description. Baymax infers familiar categories such as groceries, but single-word descriptions like `coffee` and `education` do not create categories or budgets on their own.
 
-Add optional detail as the habit grows. For a recognized category, place the merchant after the category name. An expert can also append a known category, or use `@merchant` and `#category` to remove any ambiguity:
+Add precision with comma-delimited named fields. `m:`/`merchant:` identifies where it was purchased, `c:`/`category:` identifies the spending type, and `g:`/`goal:` identifies why the expense mattered. Fields are case-insensitive, may be ordered freely, and explicit values override inference:
 
 ```text
-> $55 groceries amazon
-✓ $55.00 — groceries  [Amazon] [Groceries]
+> $55 groceries, merchant: Amazon
+✓ $55.00 — groceries  @Amazon  #Groceries
 
-> $15 coffee fresh street groceries, one-off
-✓ $15.00 — coffee  [Fresh Street] [Groceries]  #one-off · excluded from budget
+> $15 coffee, m: Fresh Street, c: Groceries, one-off
+✓ $15.00 — coffee  @Fresh Street  #Groceries  !one-off · excluded from budget
 
-> $15 coffee @fresh street #groceries
-✓ $15.00 — coffee  [Fresh Street] [Groceries]
+> $45 coffee, goal: Healthy Lifestyle, category: Groceries
+✓ $45.00 — coffee  #Groceries  → Healthy Lifestyle
 ```
 
 One-off purchases remain in spending history but do not reduce their category's budget balance.
@@ -134,16 +129,16 @@ Corrections also go through the server:
 
 ```text
 > $18 target
-✓ $18.00 — target  [Shopping]
+✓ $18.00 — target  #Shopping
 
 > no, that one's for the emergency fund goal
-✓ updated — $18.00 — target  [Shopping]  → Emergency Fund
+✓ updated — $18.00 — target  #Shopping  → Emergency Fund
 
 > $45 groceries
-✓ $45.00 — groceries  [Groceries]
+✓ $45.00 — groceries  #Groceries
 
 > oops, 54 not 45
-✓ updated — $54.00 — groceries  [Groceries]
+✓ updated — $54.00 — groceries  #Groceries
 ```
 
 Budget writes also go through the server:
@@ -172,27 +167,27 @@ Use the README as a manual test script while the server is running:
 
 1. Parse and save a simple expense:
    `> $45 groceries`
-   Expect: `✓ $45.00 — groceries  [Groceries]`
+   Expect: `✓ $45.00 — groceries  #Groceries`
 2. Parse with a flag:
    `> $12 coffee, one-off`
-   Expect: `✓ $12.00 — coffee  #one-off · excluded from budget`
+   Expect: `✓ $12.00 — coffee  !one-off · excluded from budget`
 3. Exercise goal disambiguation:
    `> $40 books, learning goal`
    `> 1`
-   Expect the numbered chooser, then `✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid`
+   Expect the numbered chooser, then `✓ $40.00 — books  #Kids  → Raise a strong, resilient kid`
 4. Exercise correction flows:
    `> $18 target`
    `> no, that one's for the emergency fund goal`
    Expect a `✓ updated — ... → Emergency Fund` line
    `> $45 groceries`
    `> oops, 54 not 45`
-   Expect a `✓ updated — $54.00 — groceries  [Groceries]` line
+   Expect a `✓ updated — $54.00 — groceries  #Groceries` line
 5. Exercise server-backed reads:
    `> report groceries`
    `> report goal resilient kid`
    `> how much on groceries this cycle?`
    `> what's left in eating out?`
-   `> what did we put toward the resilient kid goal this cycle?`
+   `> what did we spend supporting the resilient kid goal this cycle?`
 6. Exercise server-backed budget writes:
    `> set groceries budget to $600`
    `> remove groceries budget`
@@ -292,8 +287,7 @@ flags
 
 -- Open-ended by default; target is optional
 goals
-  id, household_id (FK), name, target_amount (nullable), target_date (nullable),
-  is_open_ended (bool), created_at
+  id, household_id (FK), name, created_at
 
 billing_cycles
   id, household_id (FK), start_date, end_date
@@ -329,6 +323,7 @@ GET    /expenses?cycle=current&category=groceries
 
 GET    /budgets                → all categories with budgets + live remaining balance
 GET    /goals/:id/summary?cycle=current
+GET    /expenses/suggestions?field=m|c|g&q=...&description=...
 
 POST   /ask                    → natural-language question → Claude reads relevant
                                   data (via tool-call-style queries) → plain-language answer
@@ -346,8 +341,9 @@ GET    /reports?type=category|goal|flag&cycle=current
 2. App sends raw text + household's known categories/flags/goals (as context) to `/expenses/parse`
 3. Server calls Claude with a system prompt describing your input grammar, returns strict JSON:
    ```json
-   { "amount": 45, "description": "groceries", "category": "groceries",
-     "flags": ["one-off"], "goal_candidates": [] }
+   { "amount": 45, "description": "coffee", "merchant": "Fresh Street",
+     "category": "Groceries", "goal": "Healthy Lifestyle",
+     "explicit_fields": ["merchant", "category", "goal"] }
    ```
 4. Server returns this draft to the client
 5. Client shows the confirmation (per your "optimistic execute" model) and calls `POST /expenses` to persist

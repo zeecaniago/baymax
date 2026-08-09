@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date as DateType
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ParseExpenseRequest(BaseModel):
@@ -16,15 +16,18 @@ class ExpenseDraft(BaseModel):
     description: str
     merchant: Optional[str] = None
     category: Optional[str] = None
+    goal: Optional[str] = None
     flags: list[str] = Field(default_factory=list)
     budget_treatment: Literal["included", "excluded"] = "included"
     goal_candidates: list[str] = Field(default_factory=list)
+    explicit_fields: list[Literal["merchant", "category", "goal"]] = Field(default_factory=list)
+    field_sources: dict[str, Literal["explicit", "inferred"]] = Field(default_factory=dict)
     notes: Optional[str] = None
 
 
 class CreateExpenseRequest(BaseModel):
-    amount: float
-    description: str
+    amount: float = Field(..., gt=0)
+    description: str = Field(..., min_length=1)
     merchant: Optional[str] = None
     category: Optional[str] = None
     flags: list[str] = Field(default_factory=list)
@@ -34,9 +37,17 @@ class CreateExpenseRequest(BaseModel):
     date: Optional[DateType] = None
     user_id: Optional[str] = None
 
+    @field_validator("description")
+    @classmethod
+    def description_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("description must not be blank")
+        return stripped
+
 
 class UpdateExpenseRequest(BaseModel):
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, gt=0)
     description: Optional[str] = None
     merchant: Optional[str] = None
     category: Optional[str] = None
@@ -45,6 +56,16 @@ class UpdateExpenseRequest(BaseModel):
     goals: Optional[list[str]] = None
     notes: Optional[str] = None
     date: Optional[DateType] = None
+
+    @field_validator("description")
+    @classmethod
+    def updated_description_must_not_be_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("description must not be blank")
+        return stripped
 
 
 class SetBudgetRequest(BaseModel):

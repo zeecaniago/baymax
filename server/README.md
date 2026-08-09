@@ -1,7 +1,7 @@
 # Baymax API Server
 
 FastAPI service for the Baymax expense-tracking prototype. It parses and stores
-expenses, manages category budgets, and calculates reports and goal progress.
+expenses, manages category budgets, and calculates category and goal-related spending reports.
 
 ## Run locally
 
@@ -21,13 +21,14 @@ available at `http://127.0.0.1:8000/docs`.
 | --- | --- | --- |
 | `GET` | `/` | Service health response |
 | `POST` | `/expenses/parse` | Parse natural-language expense text into a draft |
+| `GET` | `/expenses/suggestions` | Suggest known merchants, categories, or goals for a named field |
 | `POST` | `/expenses` | Save an expense |
 | `PATCH` | `/expenses/{expense_id}` | Correct a saved expense |
 | `GET` | `/expenses` | List expenses for a cycle, optionally by category |
 | `GET` | `/budgets` | Get category budgets and calculated balances |
 | `PUT` | `/budgets/{category_name}` | Create or update a category budget |
 | `DELETE` | `/budgets/{category_name}` | Remove a category budget |
-| `GET` | `/goals/{goal_id}/summary` | Get calculated goal progress |
+| `GET` | `/goals/{goal_id}/summary` | Get goal-related spending for a cycle |
 | `POST` | `/ask` | Answer supported natural-language spending questions |
 | `GET` | `/reports` | Get category, goal, or flag reports |
 
@@ -42,7 +43,7 @@ Parse an expense before saving it:
 ```bash
 curl -X POST http://127.0.0.1:8000/expenses/parse \
   -H 'Content-Type: application/json' \
-  -d '{"raw_text":"$45 coffee fresh street groceries, one-off"}'
+  -d '{"raw_text":"$45 coffee, m: Fresh Street, c: Groceries, g: Healthy Lifestyle"}'
 ```
 
 Create an expense:
@@ -50,7 +51,7 @@ Create an expense:
 ```bash
 curl -X POST http://127.0.0.1:8000/expenses \
   -H 'Content-Type: application/json' \
-  -d '{"amount":45,"description":"coffee","merchant":"fresh street","category":"groceries","flags":["one-off"],"budget_treatment":"excluded"}'
+  -d '{"amount":45,"description":"coffee","merchant":"Fresh Street","category":"Groceries","goals":["Healthy Lifestyle"]}'
 ```
 
 Set a budget and read its remaining balance:
@@ -80,16 +81,22 @@ curl 'http://127.0.0.1:8000/reports?type=category'
 
 ## Progressive purchase capture
 
-Purchases require only an amount and description. Merchant, category, and
-budget treatment are optional details that can be added as the user builds the
-habit:
+Purchases require only an amount and description. Merchant, category, goal,
+and budget treatment are optional details that can be added as the user builds
+the habit:
 
 - `$45 groceries` infers the familiar Groceries category.
 - `$45 coffee fresh street` stores coffee with the Fresh Street merchant but no category.
 - `$45 coffee fresh street groceries` adds the trailing category.
-- `$45 coffee @fresh street #groceries` is the unambiguous annotated form.
+- `$45 coffee, m: Fresh Street, c: Groceries, g: Healthy Lifestyle` is the
+  unambiguous named-field form. The long forms `merchant:`, `category:`, and
+  `goal:` are also accepted, in any order and without case sensitivity.
 - Adding `, one-off` sets `budget_treatment` to `excluded`: the purchase stays
   in history but does not reduce that category's budget balance.
+
+`GET /expenses/suggestions?field=g&q=heal` returns `Healthy Lifestyle`; pass a
+description as well to rank matches using prior household usage. This endpoint
+keeps client autocomplete separate from the expense syntax.
 
 ## Prototype limitations
 

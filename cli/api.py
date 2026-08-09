@@ -43,6 +43,18 @@ class BaymaxApiClient:
     def get_goal_summary(self, goal_id: str, *, cycle: str = "current") -> dict[str, Any]:
         return self._get_json(f"/goals/{goal_id}/summary", {"cycle": cycle})
 
+    def get_expense_suggestions(
+        self,
+        field: str,
+        *,
+        query: str = "",
+        description: str = "",
+    ) -> dict[str, Any]:
+        return self._get_json(
+            "/expenses/suggestions",
+            {"field": field, "q": query, "description": description},
+        )
+
     def ask(self, question: str, *, cycle: str = "current") -> dict[str, Any]:
         return self._post_json("/ask", {"question": question, "cycle": cycle})
 
@@ -79,6 +91,7 @@ class BaymaxApiClient:
         merchant: str | None = None,
         category: str | None = None,
         flags: list[str] | None = None,
+        budget_treatment: str | None = None,
         goals: list[str] | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
@@ -88,6 +101,7 @@ class BaymaxApiClient:
             "merchant": merchant,
             "category": category,
             "flags": flags,
+            "budget_treatment": budget_treatment,
             "goals": goals,
             "notes": notes,
         }

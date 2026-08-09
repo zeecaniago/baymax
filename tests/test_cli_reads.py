@@ -42,18 +42,22 @@ class FakeReadApiClient:
         self.goal_response = {
             "id": "goal-resilient-kid",
             "name": "Raise a strong, resilient kid",
-            "cycle_contributions": 90.0,
+            "cycle_goal_related_spending": 90.0,
             "cycle_expense_count": 2,
-            "total_contributions": 890.0,
-            "total_expense_count": 14,
-            "since": "Mar 2026",
+            "cycle_entries": [
+                {"description": "karate class", "amount": 50.0},
+                {"description": "books", "amount": 40.0},
+            ],
         }
         self.ask_responses = {
             "how much on groceries this cycle?": {
                 "answer": "Groceries: $403.00 of $400.00 (101%) — 15 expenses"
             },
             "what did we put toward the resilient kid goal this cycle?": {
-                "answer": "$90.00 across 2 expenses — karate class $50, books $40"
+                "answer": "$90.00 of goal-related spending across 2 expenses — karate class $50, books $40"
+            },
+            "what did we spend supporting the resilient kid goal this cycle?": {
+                "answer": "$90.00 of goal-related spending across 2 expenses — karate class $50, books $40"
             },
         }
 
@@ -107,9 +111,10 @@ class BaymaxCliReadTests(unittest.TestCase):
         self.assertEqual(
             result,
             [
-                "Raise a strong, resilient kid",
-                "  This cycle: $90 across 2 expenses",
-                "  All-time: $890 across 14 expenses (since Mar 2026)",
+                "Raise a strong, resilient kid — this cycle",
+                "  $90 across 2 expenses",
+                "  karate class  $50",
+                "  books  $40",
             ],
         )
 
@@ -152,7 +157,33 @@ class BaymaxCliReadTests(unittest.TestCase):
                 )
             ],
         )
-        self.assertEqual(result, ["$90.00 across 2 expenses — karate class $50, books $40"])
+        self.assertEqual(
+            result,
+            ["$90.00 of goal-related spending across 2 expenses — karate class $50, books $40"],
+        )
+
+    def test_goal_spending_question_uses_expense_oriented_language(self) -> None:
+        api = FakeReadApiClient()
+        cli = BaymaxCli(api_client=api)
+
+        result = cli.handle("what did we spend supporting the resilient kid goal this cycle?")
+
+        self.assertEqual(
+            api.calls,
+            [
+                (
+                    "ask",
+                    {
+                        "question": "what did we spend supporting the resilient kid goal this cycle?",
+                        "cycle": "current",
+                    },
+                )
+            ],
+        )
+        self.assertEqual(
+            result,
+            ["$90.00 of goal-related spending across 2 expenses — karate class $50, books $40"],
+        )
 
 
 if __name__ == "__main__":
