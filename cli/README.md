@@ -41,7 +41,7 @@ The REPL keeps command history for the current session.
 
 ```
 > $45 groceries
-✓ $45.00 — groceries  [Groceries]
+✓ $45.00 — groceries  #Groceries
 
 > report groceries
 Groceries — Jun 26–Jul 25
@@ -60,7 +60,7 @@ Use the up arrow to recall previous commands and the down arrow to move forward 
 
 ```
 > $45 groceries
-✓ $45.00 — groceries  [Groceries]
+✓ $45.00 — groceries  #Groceries
 
 > $22 parking downtown
 ✓ $22.00 — parking downtown
@@ -73,7 +73,7 @@ Capture comes before organization: a user never needs to configure categories, m
 
 ```
 > $12 coffee, one-off
-✓ $12.00 — coffee  #one-off · excluded from budget
+✓ $12.00 — coffee  !one-off · excluded from budget
 ```
 
 A one-off remains visible in purchase history but does not consume a category budget.
@@ -83,46 +83,49 @@ A one-off remains visible in purchase history but does not consume a category bu
 The middle form records a merchant without requiring a category:
 
 ```
-> $45 coffee fresh street
-✓ $45.00 — coffee  [Fresh Street]
+> $45 coffee, m: Fresh Street
+✓ $45.00 — coffee  @Fresh Street
 
-> $45 groceries fresh street
-✓ $45.00 — groceries  [Fresh Street] [Groceries]
+> $45 groceries, merchant: Fresh Street
+✓ $45.00 — groceries  @Fresh Street  #Groceries
 
-> $45 coffee fresh street groceries
-✓ $45.00 — coffee  [Fresh Street] [Groceries]
+> $45 coffee, m: Fresh Street, c: Groceries
+✓ $45.00 — coffee  @Fresh Street  #Groceries
 ```
 
-For unambiguous power-user input, use optional annotations:
+For unambiguous power-user input, use optional named fields. Short and long
+forms are accepted (`m:`/`merchant:`, `c:`/`category:`, `g:`/`goal:`), fields
+are case-insensitive and may appear in any order, and a value continues until
+the next recognized named field:
 
 ```
-> $45 coffee @fresh street #groceries
-✓ $45.00 — coffee  [Fresh Street] [Groceries]
+> $45 coffee, goal: Healthy Lifestyle, M: Fresh Street, c: Groceries
+✓ $45.00 — coffee  @Fresh Street  #Groceries  → Healthy Lifestyle
 ```
 
 ## Optimistic parse, then a correction
 
 ```
 > $18 target
-✓ $18.00 — target  [Shopping]
+✓ $18.00 — target  #Shopping
 
 > no, that one's for the emergency fund goal
-✓ updated — $18.00 — target  [Shopping]  → Emergency Fund
+✓ updated — $18.00 — target  #Shopping  → Emergency Fund
 ```
 No "are you sure" — the correction just lands. Same pattern for a typo'd amount:
 ```
 > $45 groceries
-✓ $45.00 — groceries  [Groceries]
+✓ $45.00 — groceries  #Groceries
 
 > oops, 54 not 45
-✓ updated — $54.00 — groceries  [Groceries]
+✓ updated — $54.00 — groceries  #Groceries
 ```
 
 ## Budgeted category — live balance, ambient
 
 ```
 > $85 groceries
-✓ $85.00 — groceries  [Groceries]
+✓ $85.00 — groceries  #Groceries
   Groceries: $233 left of $400 this cycle
 ```
 Compare to the parking example above — no second line there, because there's no budget to report against. The line only exists when it's true and useful.
@@ -132,7 +135,7 @@ Compare to the parking example above — no second line there, because there's n
 Unambiguous:
 ```
 > $50 karate class, kid goal
-✓ $50.00 — karate class  [Kids]  → Raise a strong, resilient kid
+✓ $50.00 — karate class  #Kids  → Raise a strong, resilient kid
 ```
 Ambiguous — this is the one place a numbered list is allowed:
 ```
@@ -140,26 +143,26 @@ Ambiguous — this is the one place a numbered list is allowed:
 Which goal?
   1. Raise a strong, resilient kid
   2. Get promoted this year
-  3. Don't link to a goal
+  0. Don't link to a goal
 > 1
-✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid
+✓ $40.00 — books  #Kids  → Raise a strong, resilient kid
 ```
 No existing match at all:
 ```
 > $200 flight deposit, family trip fund
-No goal called "family trip fund" yet:
+Which goal?
   1. Save for family trip
-  2. Create new goal: "family trip fund"
-  3. Don't link to a goal
+  2. family trip fund
+  0. Don't link to a goal
 > 1
-✓ $200.00 — flight deposit  [Travel]  → Save for family trip
+✓ $200.00 — flight deposit  #Travel  → Save for family trip
 ```
 
 ## The one interruption the agent's allowed to make
 
 ```
 > $60 groceries
-✓ $60.00 — groceries  [Groceries]
+✓ $60.00 — groceries  #Groceries
 
 ⚠ Groceries — 82% of budget ($328 of $400)
    Jun 27  farmers market      $22
@@ -171,7 +174,7 @@ No goal called "family trip fund" yet:
 Later that cycle, second and last ping:
 ```
 > $75 groceries
-✓ $75.00 — groceries  [Groceries]
+✓ $75.00 — groceries  #Groceries
 
 ⚠ Groceries — over budget: $403 of $400 (101%)
    [full list]
@@ -182,7 +185,7 @@ After this, groceries can keep being logged all cycle with no more pings — the
 
 ```
 > 6/20 $200 car repair
-✓ $200.00 — car repair  [Auto]
+✓ $200.00 — car repair  #Auto
   ↳ logged to cycle May 26 – Jun 25 (closed)
 ```
 
@@ -195,8 +198,8 @@ Groceries: $403.00 of $400.00 (101%) — 15 expenses
 > what's left in eating out?
 Eating Out doesn't have a budget this cycle.
 
-> what did we put toward the resilient kid goal this cycle?
-$90.00 across 2 expenses — karate class $50, books $40
+> what did we spend supporting the resilient kid goal this cycle?
+$90.00 of goal-related spending across 2 expenses — karate class $50, books $40
 ```
 
 ## Smoke-test walkthrough
@@ -206,28 +209,28 @@ The exact amounts in reports and questions reflect the expenses logged during th
 Use this as a manual verification script after starting the server and the CLI:
 
 1. `> $45 groceries`
-   Expect: `✓ $45.00 — groceries  [Groceries]`
+   Expect: `✓ $45.00 — groceries  #Groceries`
 2. `> $12 coffee, one-off`
-   Expect: `✓ $12.00 — coffee  [Coffee]  #one-off`
+   Expect: `✓ $12.00 — coffee  !one-off · excluded from budget`
 3. `> $40 books, learning goal`
    `> 1`
-   Expect the numbered chooser, then `✓ $40.00 — books  [Kids]  → Raise a strong, resilient kid`
+   Expect the numbered chooser, then `✓ $40.00 — books  #Kids  → Raise a strong, resilient kid`
 4. `> $18 target`
    `> no, that one's for the emergency fund goal`
-   Expect: `✓ updated — $18.00 — target  [Shopping]  → Emergency Fund`
+   Expect: `✓ updated — $18.00 — target  #Shopping  → Emergency Fund`
 5. `> $45 groceries`
    `> oops, 54 not 45`
-   Expect: `✓ updated — $54.00 — groceries  [Groceries]`
+   Expect: `✓ updated — $54.00 — groceries  #Groceries`
 6. `> report groceries`
    Expect the three-line groceries report shown above
 7. `> report goal resilient kid`
-   Expect the two summary lines plus the all-time line shown below
+   Expect the current-cycle goal-related spending report shown below
 8. `> how much on groceries this cycle?`
    Expect: `Groceries: $403.00 of $400.00 (101%) — 15 expenses`
 9. `> what's left in eating out?`
    Expect: `Eating Out doesn't have a budget this cycle.`
-10. `> what did we put toward the resilient kid goal this cycle?`
-    Expect: `$90.00 across 2 expenses — karate class $50, books $40`
+10. `> what did we spend supporting the resilient kid goal this cycle?`
+    Expect: `$90.00 of goal-related spending across 2 expenses — karate class $50, books $40`
 11. `> set groceries budget to $600`
     `> remove groceries budget`
 12. `> suggest a groceries budget`
@@ -279,12 +282,12 @@ Groceries — Jun 26–Jul 25
   Largest: Costco $91, Whole Foods $64, Trader Joe's $58
 
 > report goal resilient kid
-Raise a strong, resilient kid
-  This cycle: $90 across 2 expenses
-  All-time: $890 across 14 expenses (since Mar 2026)
+Raise a strong, resilient kid — this cycle
+  $90 across 2 expenses
+  karate class  $50
+  books  $40
 ```
-That "all-time" line is doing real work — it's the CLI's way of showing goals cross cycle boundaries when everything else doesn't.
 
 ---
 
-**Formatting conventions used above** (all up for debate): `✓` confirm, `[Category]` brackets, `#flag`, `→ Goal`, `↳` cross-cycle note, `⚠` the rare interruption.
+**Formatting conventions used above**: `✓` confirm, `@Merchant`, `#Category`, `!flag`, `→ Goal`, `↳` cross-cycle note, `⚠` the rare interruption.

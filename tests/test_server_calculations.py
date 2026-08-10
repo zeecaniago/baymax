@@ -87,18 +87,22 @@ class ServerCalculationTests(unittest.TestCase):
 
         summary = baymax_api.get_goal_summary("goal-resilient-kid", "current")
 
-        self.assertEqual(summary["cycle_contributions"], 90.0)
-        self.assertEqual(summary["total_contributions"], 90.0)
+        self.assertEqual(summary["cycle_goal_related_spending"], 90.0)
+        self.assertEqual(summary["total_goal_related_spending"], 90.0)
         self.assertEqual(summary["cycle_expense_count"], 2)
         self.assertEqual(summary["total_expense_count"], 2)
-        self.assertEqual(summary["since"], self._current_cycle_date().strftime("%b %Y"))
+        self.assertNotIn("remaining_to_target", summary)
+        self.assertNotIn("cycle_contributions", summary)
 
         answer = baymax_api.ask_question(
             baymax_api.AskRequest(
                 question="what did we put toward the resilient kid goal this cycle?"
             )
         )
-        self.assertEqual(answer.answer, "$90.00 across 2 expenses — Karate class $50, Books $40")
+        self.assertEqual(
+            answer.answer,
+            "$90.00 of goal-related spending across 2 expenses — Karate class $50, Books $40",
+        )
 
     def test_backdated_expenses_are_excluded_from_the_current_cycle(self) -> None:
         cycle_start, _ = baymax_api._cycle_bounds("current")

@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Optional
 
 # These are initial configuration values, not report fixtures. Spending, counts,
-# reports, and goal progress are all calculated from EXPENSES below.
+# reports, and goal-related spending summaries are all calculated from EXPENSES below.
 DEFAULT_CATEGORY_BUDGETS: dict[str, Optional[float]] = {
     "groceries": 400.0,
     "transport": 150.0,
@@ -12,27 +12,32 @@ DEFAULT_CATEGORY_BUDGETS: dict[str, Optional[float]] = {
 }
 CATEGORY_BUDGETS = deepcopy(DEFAULT_CATEGORY_BUDGETS)
 
+# Goals are purposes an expense can support. They deliberately carry no saved
+# balance or target amount: Baymax reports linked spending, not goal funding.
 GOAL_DEFINITIONS = {
     "goal-resilient-kid": {
         "id": "goal-resilient-kid",
         "name": "Raise a strong, resilient kid",
-        "target_amount": None,
-        "target_date": None,
-        "is_open_ended": True,
+    },
+    "goal-healthy-lifestyle": {
+        "id": "goal-healthy-lifestyle",
+        "name": "Healthy Lifestyle",
+    },
+    "goal-promoted": {
+        "id": "goal-promoted",
+        "name": "Get promoted this year",
+    },
+    "goal-family-trip": {
+        "id": "goal-family-trip",
+        "name": "Save for family trip",
     },
     "goal-emergency-fund": {
         "id": "goal-emergency-fund",
         "name": "Emergency Fund",
-        "target_amount": 10000.0,
-        "target_date": None,
-        "is_open_ended": True,
     },
     "goal-japan-trip": {
         "id": "goal-japan-trip",
         "name": "Japan Trip",
-        "target_amount": 4000.0,
-        "target_date": "2027-05-01",
-        "is_open_ended": False,
     },
 }
 

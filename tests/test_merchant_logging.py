@@ -69,7 +69,7 @@ class MerchantLoggingTests(unittest.TestCase):
         self.assertEqual((saved["description"], saved["merchant"], saved["category"]), ("coffee", "starbuck", None))
         self.assertEqual(
             BaymaxCli()._format_expense(expense),
-            "✓ $15.00 — coffee  [Starbuck]",
+            "✓ $15.00 — coffee  @Starbuck",
         )
 
     def test_one_off_is_rendered_as_excluded_from_budget(self) -> None:
@@ -95,7 +95,7 @@ class MerchantLoggingTests(unittest.TestCase):
         self.assertEqual(saved["budget_treatment"], "excluded")
         self.assertEqual(
             BaymaxCli()._format_expense(expense),
-            "✓ $15.00 — coffee  [Fresh Street] [Groceries]  #one-off · excluded from budget",
+            "✓ $15.00 — coffee  @Fresh Street  #Groceries  !one-off · excluded from budget",
         )
 
     def test_unrecognized_multi_word_descriptions_are_not_split(self) -> None:

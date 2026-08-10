@@ -136,22 +136,19 @@ def goal_summary(goal_id: str, cycle: str) -> dict:
 
     cycle_entries = goal_entries(goal, expenses_for_cycle(cycle))
     all_entries = goal_entries(goal, EXPENSES)
-    total_contributions = round(sum(float(expense["amount"]) for expense in all_entries), 2)
-    target_amount = goal["target_amount"]
-    since = min((expense["date"] for expense in all_entries), default=None)
     start, end_exclusive = cycle_bounds(cycle)
     return {
         **deepcopy(goal),
         "cycle": cycle,
         "cycle_label": cycle_label(start, end_exclusive),
-        "cycle_contributions": round(sum(float(expense["amount"]) for expense in cycle_entries), 2),
-        "total_contributions": total_contributions,
-        "remaining_to_target": (
-            None if target_amount is None else round(max(target_amount - total_contributions, 0.0), 2)
+        "cycle_goal_related_spending": round(
+            sum(float(expense["amount"]) for expense in cycle_entries), 2
+        ),
+        "total_goal_related_spending": round(
+            sum(float(expense["amount"]) for expense in all_entries), 2
         ),
         "cycle_expense_count": len(cycle_entries),
         "total_expense_count": len(all_entries),
-        "since": DateType.fromisoformat(since).strftime("%b %Y") if since else None,
         "cycle_entries": [
             {"description": expense["description"], "amount": float(expense["amount"])}
             for expense in cycle_entries
