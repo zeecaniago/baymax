@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 
-from server.parsing import canonical_goal_name, split_named_fields
-
-from .api import BaymaxApiClient, BaymaxApiError
+from .api import BaymaxApiClient
+from .budget_commands import BudgetCommands
+from .expense_commands import ExpenseCommands
+from .models import Expense
+from .presentation import CliPresentation
+from .reporting import ReportingCommands
 
 try:
     import readline
@@ -13,31 +15,12 @@ except ImportError:  # pragma: no cover - depends on platform support
     readline = None
 
 
-BOOT_BANNER = "Cycle: Jun 26 \u2013 Jul 25   (day 10 of 30)"
-GOAL_IDS = {
-    "resilient kid": "goal-resilient-kid",
-    "raise a strong, resilient kid": "goal-resilient-kid",
-    "healthy lifestyle": "goal-healthy-lifestyle",
-    "get promoted this year": "goal-promoted",
-    "save for family trip": "goal-family-trip",
-    "emergency fund": "goal-emergency-fund",
-    "japan trip": "goal-japan-trip",
-}
+BOOT_BANNER = "Cycle: Jun 26 – Jul 25   (day 10 of 30)"
 
 
-@dataclass
-class Expense:
-    amount: float
-    description: str
-    merchant: str | None = None
-    category: str | None = None
-    flags: list[str] = field(default_factory=list)
-    budget_treatment: str = "included"
-    goal: str | None = None
-    expense_id: str | None = None
+class BaymaxCli(ExpenseCommands, BudgetCommands, ReportingCommands, CliPresentation):
+    """Interactive CLI facade that routes commands to focused workflows."""
 
-
-class BaymaxCli:
     def __init__(self, api_client: BaymaxApiClient | None = None) -> None:
         self.api = api_client or BaymaxApiClient()
         self.last_expense: Expense | None = None
@@ -97,12 +80,11 @@ class BaymaxCli:
             return self._remove_category_budget(category)
 
         lowered = raw.lower()
-
         if lowered == "suggest a groceries budget":
             self.pending_action = "confirm_budget_change"
             self.pending_budget_category = "Groceries"
             self.pending_budget_amount = 400.0
-            return ["Last 3 cycles: $380, $410, $395 \u2014 avg $395", "Suggest $400/cycle. Set it?"]
+            return ["Last 3 cycles: $380, $410, $395 — avg $395", "Suggest $400/cycle. Set it?"]
 
         goal_report_match = re.fullmatch(r"report\s+goal\s+(.+?)", raw, re.IGNORECASE)
         if goal_report_match:
@@ -114,552 +96,27 @@ class BaymaxCli:
 
         if lowered == "how much on groceries this cycle?":
             return self._ask_question(raw)
-
         if lowered == "what's left in eating out?":
             return self._eating_out_balance()
-
         if lowered in {
             "what did we put toward the resilient kid goal this cycle?",
             "what did we spend supporting the resilient kid goal this cycle?",
         }:
             return self._ask_question(raw)
-
         if lowered == "no, that one's for the emergency fund goal":
             return self._update_last_goal("Emergency Fund")
 
-        correction_match = re.fullmatch(r"(?:correct|update)\s+last\s+expense\s*,?\s*(.+)", raw, re.IGNORECASE)
+        correction_match = re.fullmatch(
+            r"(?:correct|update)\s+last\s+expense\s*,?\s*(.+)",
+            raw,
+            re.IGNORECASE,
+        )
         if correction_match:
             return self._correct_last_expense(correction_match.group(1))
-
         if re.fullmatch(r"oops,\s*\d+(?:\.\d{1,2})?\s+not\s+\d+(?:\.\d{1,2})?", lowered):
             return self._update_last_amount(raw)
 
         return self._log_expense(raw)
-
-    def _resolve_goal_choice(self, raw: str) -> list[str]:
-        expense = self.pending_expense
-        candidates = self.pending_goal_candidates
-        if expense is None:
-            self._clear_pending_expense()
-            return []
-
-        try:
-            choice = int(raw.strip())
-        except ValueError:
-            return ["Choose a listed goal, or 0 to leave it unlinked."]
-
-        if choice == 0:
-            expense.goal = None
-            if self.pending_expense_draft is not None:
-                self.pending_expense_draft["goal_candidates"] = []
-        elif 1 <= choice <= len(candidates):
-            expense.goal = candidates[choice - 1]
-        else:
-            return ["Choose a listed goal, or 0 to leave it unlinked."]
-
-        created_expense = self._persist_pending_expense(expense)
-        if created_expense is None:
-            return []
-        self.last_expense = created_expense
-        self._clear_pending_expense()
-        return [self._format_expense(created_expense)]
-
-    def _resolve_budget_confirmation(self, raw: str) -> list[str]:
-        self.pending_action = None
-        category = self.pending_budget_category
-        amount = self.pending_budget_amount
-        self.pending_budget_category = None
-        self.pending_budget_amount = None
-        if raw.strip().lower() in {"y", "yes"}:
-            if category is None or amount is None:
-                return ["Nothing to update."]
-            return self._set_category_budget(category, amount)
-        return ["No change."]
-
-    def _update_last_goal(self, goal: str) -> list[str]:
-        if self.last_expense is None:
-            return ["Nothing to update."]
-        updated_expense = self._update_last_expense_on_server(goals=[goal])
-        if updated_expense is None:
-            return []
-        return [self._format_update(updated_expense)]
-
-    def _update_last_amount(self, raw: str) -> list[str]:
-        if self.last_expense is None:
-            return ["Nothing to update."]
-        numbers = [float(match) for match in re.findall(r"\d+(?:\.\d{1,2})?", raw)]
-        if not numbers:
-            return ["Nothing to update."]
-        updated_expense = self._update_last_expense_on_server(amount=numbers[0])
-        if updated_expense is None:
-            return []
-        return [self._format_update(updated_expense)]
-
-    def _correct_last_expense(self, raw: str) -> list[str]:
-        if self.last_expense is None:
-            return ["Nothing to update."]
-        if self.last_expense.expense_id is None:
-            return ["Couldn't update the last expense because it was never saved."]
-
-        try:
-            fields = split_named_fields(raw)
-        except ValueError as exc:
-            return [str(exc)]
-        updates: dict[str, object] = {}
-        if "merchant" in fields.values:
-            updates["merchant"] = fields.values["merchant"]
-        if "category" in fields.values:
-            updates["category"] = fields.values["category"]
-        if "goal" in fields.values:
-            updates["goals"] = [canonical_goal_name(fields.values["goal"])]
-        if not updates:
-            return ["Use m:, c:, or g: to correct the last expense."]
-
-        try:
-            updated = self.api.update_expense(self.last_expense.expense_id, **updates)
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        updated_expense = self._expense_from_created_response(updated)
-        self.last_expense = updated_expense
-        return [self._format_update(updated_expense)]
-
-    def _log_expense(self, raw: str) -> list[str]:
-        parsed = self._parse_expense_for_prompt(raw)
-        if parsed is None:
-            return []
-
-        goal_candidates = list(parsed.get("goal_candidates") or [])
-        if parsed.get("goal") is None and len(goal_candidates) > 1:
-            self.pending_action = "choose_goal"
-            self.pending_expense = self._expense_from_parse_response(parsed)
-            self.pending_expense_draft = parsed
-            self.pending_goal_candidates = goal_candidates
-            return [
-                "Which goal?",
-                *(
-                    f"  {index}. {goal}"
-                    for index, goal in enumerate(goal_candidates, start=1)
-                ),
-                "  0. Don't link to a goal",
-            ]
-
-        try:
-            expense = self._persist_parsed_expense(parsed)
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        self.last_expense = expense
-        lines = [self._format_expense(expense)]
-
-        if raw.lower() == "$85 groceries":
-            groceries_budget = self._budget_for("Groceries", default=400.0)
-            if groceries_budget is not None:
-                spent = 167.0
-                lines.append(
-                    f"  Groceries: {self._format_currency(groceries_budget - spent)} left"
-                    f" of {self._format_currency(groceries_budget)} this cycle"
-                )
-            return lines
-
-        if raw.lower() == "$60 groceries":
-            groceries_budget = self._budget_for("Groceries", default=400.0)
-            if groceries_budget is not None:
-                spent = 328.0
-                percent = round((spent / groceries_budget) * 100)
-                lines.extend(
-                    [
-                        "",
-                        (
-                            f"\u26a0 Groceries \u2014 {percent}% of budget "
-                            f"({self._format_currency(spent)} of {self._format_currency(groceries_budget)})"
-                        ),
-                        "   Jun 27  farmers market      $22",
-                        "   Jun 29  Whole Foods         $64",
-                        "   Jul 01  Costco              $91",
-                        "   Jul 03  Trader Joe's        $58",
-                        "   Jul 05  groceries           $60",
-                    ]
-                )
-            return lines
-
-        if raw.lower() == "$75 groceries":
-            groceries_budget = self._budget_for("Groceries", default=400.0)
-            if groceries_budget is not None:
-                spent = 403.0
-                percent = round((spent / groceries_budget) * 100)
-                lines.extend(
-                    [
-                        "",
-                        (
-                            f"\u26a0 Groceries \u2014 over budget: "
-                            f"{self._format_currency(spent)} of {self._format_currency(groceries_budget)}"
-                            f" ({percent}%)"
-                        ),
-                        "   [full list]",
-                    ]
-                )
-            return lines
-
-        if raw.lower().startswith("6/20 $200 car repair"):
-            lines.append("  \u21b3 logged to cycle May 26 \u2013 Jun 25 (closed)")
-            return lines
-
-        if expense.category == "Groceries":
-            self.groceries_spent += expense.amount
-
-        return lines
-
-    def _parse_expense_for_prompt(self, raw: str) -> dict | None:
-        try:
-            return self.api.parse_expense(raw)
-        except BaymaxApiError as exc:
-            print(exc)
-            return None
-
-    def _persist_pending_expense(self, expense: Expense) -> Expense | None:
-        draft = self.pending_expense_draft
-        if draft is None:
-            return expense
-        try:
-            return self._persist_parsed_expense(draft, goal=expense.goal)
-        except BaymaxApiError as exc:
-            print(exc)
-            return None
-
-    def _persist_parsed_expense(self, parsed: dict, goal: str | None = None) -> Expense:
-        resolved_goal = goal if goal is not None else parsed.get("goal")
-        goals = [resolved_goal] if resolved_goal else []
-        if not goals:
-            goal_candidates = parsed.get("goal_candidates") or []
-            if len(goal_candidates) == 1:
-                goals = [goal_candidates[0]]
-
-        created = self.api.create_expense(
-            amount=float(parsed["amount"]),
-            description=parsed["description"],
-            merchant=parsed.get("merchant"),
-            category=parsed.get("category"),
-            flags=list(parsed.get("flags") or []),
-            budget_treatment=parsed.get("budget_treatment") or "included",
-            goals=goals,
-            notes=parsed.get("notes"),
-        )
-        return self._expense_from_created_response(created)
-
-    def _update_last_expense_on_server(
-        self,
-        *,
-        amount: float | None = None,
-        goals: list[str] | None = None,
-    ) -> Expense | None:
-        expense = self.last_expense
-        if expense is None:
-            return None
-        if expense.expense_id is None:
-            print("Couldn't update the last expense because it was never saved.")
-            return None
-
-        try:
-            updated = self.api.update_expense(
-                expense.expense_id,
-                amount=amount,
-                goals=goals,
-            )
-        except BaymaxApiError as exc:
-            print(exc)
-            return None
-
-        updated_expense = self._expense_from_created_response(updated)
-        self.last_expense = updated_expense
-        return updated_expense
-
-    def _expense_from_parse_response(self, parsed: dict) -> Expense:
-        goals = parsed.get("goal_candidates") or []
-        goal = parsed.get("goal") or (goals[0] if len(goals) == 1 else None)
-        return Expense(
-            amount=float(parsed["amount"]),
-            description=parsed["description"],
-            merchant=self._normalize_merchant_name(parsed.get("merchant")),
-            category=self._normalize_api_category(parsed.get("category")),
-            flags=list(parsed.get("flags") or []),
-            budget_treatment=parsed.get("budget_treatment") or "included",
-            goal=goal,
-        )
-
-    def _expense_from_created_response(self, payload: dict) -> Expense:
-        goals = payload.get("goals") or []
-        goal = goals[0] if goals else None
-        return Expense(
-            amount=float(payload["amount"]),
-            description=payload["description"],
-            merchant=self._normalize_merchant_name(payload.get("merchant")),
-            category=self._normalize_api_category(payload.get("category")),
-            flags=list(payload.get("flags") or []),
-            budget_treatment=payload.get("budget_treatment") or "included",
-            goal=goal,
-            expense_id=payload.get("id"),
-        )
-
-    def _normalize_api_category(self, category: str | None) -> str | None:
-        if category is None:
-            return None
-        return self._normalize_category_name(category)
-
-    def _clear_pending_expense(self) -> None:
-        self.pending_action = None
-        self.pending_expense = None
-        self.pending_expense_draft = None
-        self.pending_goal_candidates = []
-
-    def _format_expense(self, expense: Expense) -> str:
-        line = f"\u2713 ${expense.amount:.2f} \u2014 {expense.description}"
-        if expense.merchant:
-            line += self._format_merchant(expense.merchant)
-        if expense.category:
-            line += self._format_category(expense.category)
-        if expense.flags:
-            line += "  " + " ".join(f"!{flag}" for flag in expense.flags)
-        if expense.budget_treatment == "excluded":
-            line += " · excluded from budget"
-        if expense.goal:
-            line += f"  \u2192 {expense.goal}"
-        return line
-
-    def _format_update(self, expense: Expense) -> str:
-        line = f"\u2713 updated \u2014 ${expense.amount:.2f} \u2014 {expense.description}"
-        if expense.merchant:
-            line += self._format_merchant(expense.merchant)
-        if expense.category:
-            line += self._format_category(expense.category)
-        if expense.flags:
-            line += "  " + " ".join(f"!{flag}" for flag in expense.flags)
-        if expense.budget_treatment == "excluded":
-            line += " · excluded from budget"
-        if expense.goal:
-            line += f"  \u2192 {expense.goal}"
-        return line
-
-    def _format_category(self, category: str | None) -> str:
-        if not category:
-            return ""
-        return f"  #{category}"
-
-    def _format_merchant(self, merchant: str) -> str:
-        return f"  @{merchant}"
-
-    def _normalize_category_name(self, raw_category: str) -> str:
-        category = " ".join(raw_category.strip().split())
-        aliases = {
-            "groceries": "Groceries",
-            "eating out": "Eating Out",
-        }
-        return aliases.get(category.lower(), category.title())
-
-    def _normalize_merchant_name(self, merchant: str | None) -> str | None:
-        if merchant is None:
-            return None
-        words = merchant.strip().split()
-        if not words:
-            return None
-        return " ".join(
-            word if any(char.isupper() for char in word) else word.capitalize()
-            for word in words
-        )
-
-    def _set_category_budget(self, category: str, amount: float) -> list[str]:
-        try:
-            response = self.api.set_budget(category, amount)
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        action = response.get("action")
-        payload = response.get("category") or {}
-        category_name = self._normalize_api_category(payload.get("name")) or category
-        budget_amount = float(payload.get("budget_amount") or amount)
-        previous_budget = response.get("previous_budget")
-
-        self.category_budgets[category_name] = budget_amount
-
-        if action == "created":
-            return [f"\u2713 Created [{category_name}] \u2014 budget {self._format_currency(budget_amount)}/cycle"]
-        if action == "set":
-            return [f"\u2713 [{category_name}] budget set to {self._format_currency(budget_amount)}/cycle"]
-        if action == "updated":
-            if previous_budget is None:
-                print("Baymax API returned an invalid budget update payload.")
-                return []
-            return [
-                (
-                    f"\u2713 [{category_name}] budget updated: "
-                    f"{self._format_currency(budget_amount)}/cycle"
-                    f" (was {self._format_currency(float(previous_budget))}/cycle)"
-                )
-            ]
-
-        print("Baymax API returned an invalid budget response.")
-        return []
-
-    def _remove_category_budget(self, category: str) -> list[str]:
-        try:
-            response = self.api.remove_budget(category)
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        action = response.get("action")
-        payload = response.get("category") or {}
-        category_name = self._normalize_api_category(payload.get("name")) or category
-        previous_budget = response.get("previous_budget")
-
-        if action == "missing":
-            return [f"No category called [{category}] yet."]
-        if action == "already_removed":
-            self.category_budgets[category_name] = None
-            return [f"[{category_name}] doesn't have a budget."]
-        if action == "removed":
-            if previous_budget is None:
-                print("Baymax API returned an invalid budget removal payload.")
-                return []
-            self.category_budgets[category_name] = None
-            return [
-                (
-                    f"\u2713 [{category_name}] \u2014 budget removed"
-                    f" (was {self._format_currency(float(previous_budget))}/cycle)"
-                )
-            ]
-
-        print("Baymax API returned an invalid budget response.")
-        return []
-
-    def _report_category(self, category_name: str) -> list[str]:
-        try:
-            report = self.api.get_reports(report_type="category")
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        category = self._find_named_item(report.get("items"), category_name)
-        if category is None:
-            return [f"No category called [{self._normalize_category_name(category_name)}] yet."]
-        return self._format_category_report(report, category)
-
-    def _report_goal_summary(self, goal_alias: str) -> list[str]:
-        normalized_alias = " ".join(goal_alias.strip().lower().split())
-        goal_id = GOAL_IDS.get(normalized_alias)
-        if goal_id is None:
-            return [f"No goal called {goal_alias!r}."]
-
-        try:
-            summary = self.api.get_goal_summary(goal_id)
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        cycle_amount = float(summary.get("cycle_goal_related_spending") or 0.0)
-        cycle_count = int(summary.get("cycle_expense_count") or 0)
-        entries = summary.get("cycle_entries") or []
-        lines = [
-            f"{summary['name']} — this cycle",
-            f"  {self._format_currency(cycle_amount)} across {cycle_count} {self._expense_label(cycle_count)}",
-        ]
-        lines.extend(
-            f"  {entry['description']}  {self._format_currency(float(entry['amount']))}"
-            for entry in entries
-        )
-        return lines
-
-    def _eating_out_balance(self) -> list[str]:
-        try:
-            budgets = self.api.get_budgets()
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        category = self._find_named_item(budgets.get("categories"), "eating out")
-        if category is None:
-            print("Baymax API didn't return an Eating Out budget.")
-            return []
-
-        budget = category.get("budget_amount")
-        if budget is None:
-            return ["Eating Out doesn't have a budget this cycle."]
-
-        remaining = category.get("remaining")
-        if remaining is None:
-            remaining = float(budget) - float(category.get("spent") or 0.0)
-        return [f"{self._format_currency(float(remaining))} left of {self._format_currency(float(budget))}"]
-
-    def _ask_question(self, question: str) -> list[str]:
-        try:
-            response = self.api.ask(question)
-        except BaymaxApiError as exc:
-            print(exc)
-            return []
-
-        answer = response.get("answer")
-        if not isinstance(answer, str):
-            print("Baymax API returned an invalid answer payload.")
-            return []
-        return [answer]
-
-    def _format_category_report(self, report: dict, category: dict) -> list[str]:
-        category_name = self._normalize_category_name(category["name"])
-        cycle_label = report.get("cycle_label") or report.get("cycle") or "current"
-        spent = float(category.get("spent") or 0.0)
-        budget = category.get("budget_amount")
-        expense_count = int(category.get("expense_count") or 0)
-        average_amount = float(category.get("average_amount") or 0.0)
-        excluded_spent = float(category.get("excluded_spent") or 0.0)
-
-        if budget is None:
-            summary_line = (
-                f"  {self._format_currency(spent)} spent \u00b7 "
-                f"{expense_count} {self._expense_label(expense_count)} \u00b7 "
-                f"avg {self._format_currency(average_amount)}"
-            )
-        else:
-            percent = round((spent / float(budget)) * 100) if budget else 0
-            summary_line = (
-                f"  {self._format_currency(spent)} of {self._format_currency(float(budget))} "
-                f"({percent}%) \u00b7 {expense_count} {self._expense_label(expense_count)} \u00b7 "
-                f"avg {self._format_currency(average_amount)}"
-            )
-
-        if excluded_spent:
-            summary_line += f" \u00b7 {self._format_currency(excluded_spent)} excluded"
-
-        lines = [f"{category_name} \u2014 {cycle_label}", summary_line]
-        largest_expenses = category.get("largest_expenses") or []
-        if largest_expenses:
-            formatted_largest = ", ".join(
-                f"{entry['description']} {self._format_currency(float(entry['amount']))}"
-                for entry in largest_expenses
-            )
-            lines.append(f"  Largest: {formatted_largest}")
-        return lines
-
-    def _find_named_item(self, items: list[dict] | None, name: str) -> dict | None:
-        if not items:
-            return None
-        normalized_name = name.strip().lower()
-        for item in items:
-            item_name = item.get("name")
-            if isinstance(item_name, str) and item_name.strip().lower() == normalized_name:
-                return item
-        return None
-
-    def _expense_label(self, count: int) -> str:
-        return "expense" if count == 1 else "expenses"
-
-    def _budget_for(self, category: str, default: float | None = None) -> float | None:
-        return self.category_budgets.get(category, default)
-
-    def _format_currency(self, amount: float) -> str:
-        return f"${amount:.2f}".rstrip("0").rstrip(".")
 
     def _configure_input_history(self) -> None:
         if readline is None:
@@ -682,7 +139,10 @@ class BaymaxCli:
 
     def _format_history(self) -> list[str]:
         width = len(str(len(self.command_history)))
-        return [f"{index:>{width}}  {command}" for index, command in enumerate(self.command_history, start=1)]
+        return [
+            f"{index:>{width}}  {command}"
+            for index, command in enumerate(self.command_history, start=1)
+        ]
 
 
 def main() -> None:

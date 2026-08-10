@@ -18,6 +18,21 @@ Expense logging and the main read flows now go through the API server instead of
 
 The CLI defaults to `http://127.0.0.1:8000`. Override that with `BAYMAX_API_URL` if needed.
 
+## Code layout
+
+`app.py` is intentionally just the REPL facade: it owns session state, routes input,
+and starts the interactive loop. The command implementations live beside it:
+
+- `expense_commands.py` handles logging, goal selection, and corrections.
+- `budget_commands.py` handles budget prompts and budget writes.
+- `reporting.py` handles reports and read-only questions.
+- `presentation.py` normalizes API payloads and formats CLI output.
+- `models.py` defines the CLI's `Expense` value object.
+- `api.py` remains the focused HTTP client used by each workflow.
+
+`BaymaxCli` and `Expense` continue to be exported from `cli.app` for compatibility
+with existing callers.
+
 The server owns:
 
 - expense parsing and creation
