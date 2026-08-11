@@ -15,6 +15,11 @@ uvicorn server.app:app --reload
 The API is available at `http://127.0.0.1:8000`. Interactive OpenAPI docs are
 available at `http://127.0.0.1:8000/docs`.
 
+Data is stored in `data/baymax.db` by default. Override the location with
+`BAYMAX_DB_PATH`, for example `BAYMAX_DB_PATH=/tmp/baymax.db uvicorn
+server.app:app --reload`. Stop the server and delete the database file to reset
+local development data; Baymax recreates its schema and seed data on startup.
+
 ## API overview
 
 | Method | Path | Purpose |
@@ -77,7 +82,9 @@ curl 'http://127.0.0.1:8000/reports?type=category'
 - `models.py` defines Pydantic request and response models.
 - `parsing.py` contains natural-language parsing and normalization helpers.
 - `calculations.py` derives cycle, budget, goal, and report data.
-- `store.py` owns the prototype's process-local state and reset helper.
+- `db.py` owns SQLite connection, schema initialization, and seed data.
+- `repositories/` isolates persistence queries from routes and business logic.
+- `store.py` retains the database reset helper used by compatibility tests.
 
 ## Progressive purchase capture
 
@@ -100,15 +107,14 @@ keeps client autocomplete separate from the expense syntax.
 
 ## Prototype limitations
 
-Data is stored only in memory. Restarting the server clears all expenses and
-restores the default budgets. There is no authentication or persistent database
-yet; `household_id` is accepted on parsing requests for API-shape compatibility
-but is not currently used.
+There is no authentication or multi-user behavior yet. Persisted rows retain
+default household and user identifiers so those concepts can be introduced
+later without changing the expense schema.
 
 ## Test
 
 Run the repository test suite from the project root:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m pytest
 ```

@@ -2,10 +2,16 @@
 
 The repo currently contains:
 
-- an in-memory FastAPI server in `server/`
+- a SQLite-backed FastAPI server in `server/`
 - a Python REPL-style CLI in `cli/`
 
-The server is still in-memory only: expenses, budgets, reports, and goal summaries reset when its process restarts. Reports and balances are now calculated from the expenses saved during the current server process. There is no Postgres/MySQL setup yet.
+The server persists expenses, corrections, categories, budgets, flags, and goal links in SQLite. By default the database is `data/baymax.db`, so data survives server restarts. Set `BAYMAX_DB_PATH` to use another location, which is particularly useful for isolated tests:
+
+```bash
+BAYMAX_DB_PATH=/tmp/baymax-dev.db uvicorn server.app:app --reload
+```
+
+To reset local development data, stop the server and delete `data/baymax.db`; the schema and default categories/goals are recreated on the next start.
 
 ### 1. Install server dependencies
 
@@ -197,14 +203,14 @@ Use the README as a manual test script while the server is running:
 8. Exercise local-only commands:
    `> history`
 
-Important current limitation: the read endpoints calculate from in-memory data only. Logging or correcting an expense immediately changes later reports and balances, but all data is lost when the server restarts.
+Read endpoints calculate from persisted SQLite data. Logging or correcting an expense immediately changes later reports and balances, and those changes remain after a server restart.
 
 ### Current behavior split
 
 - Expense parsing, creation, correction, reports, goal summaries, budget reads, budget writes, and question answering go through the server.
 - Budget recommendation prompts and most multi-step REPL state still live in the CLI for now.
 - Server-backed reads recompute from newly logged and corrected expenses while the server is running.
-- Server data is reset when the server process restarts.
+- Server data persists across process restarts in SQLite.
 
 ## 1. System Overview
 

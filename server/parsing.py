@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Optional
 
-from .store import CATEGORY_BUDGETS, EXPENSES, GOAL_DEFINITIONS
+from .repositories import (
+    categories as category_repository,
+    expenses as expense_repository,
+    goals as goal_repository,
+)
 
 # These short purchase descriptions have a natural merchant slot. They let a
 # person start with a quick log ("coffee") and add merchant detail later
@@ -62,7 +66,7 @@ def display_name(name: str) -> str:
 
 def canonical_goal_name(name: str) -> str:
     normalized = normalized_name(name)
-    for goal in GOAL_DEFINITIONS.values():
+    for goal in goal_repository.list_all():
         if normalized in {normalized_name(goal["id"]), normalized_name(goal["name"])}:
             return goal["name"]
     return " ".join(name.strip().split())
@@ -227,7 +231,7 @@ def _without_natural_goal_markers(value: str) -> str:
 
 def _leading_category(description: str) -> tuple[Optional[str], Optional[str]]:
     """Find a known category prefix, returning its normalized name and text."""
-    available_categories = set(CATEGORY_BUDGETS)
+    available_categories = {category["name"] for category in category_repository.list_all()}
     for category in sorted(available_categories, key=len, reverse=True):
         match = re.match(rf"{re.escape(category)}(?:\s|$)", description, re.IGNORECASE)
         if match:
@@ -242,7 +246,7 @@ def _leading_category(description: str) -> tuple[Optional[str], Optional[str]]:
 
 def _trailing_category(description: str) -> tuple[str, str] | None:
     """Find an optional expert-supplied category at the end of a quick log."""
-    available_categories = set(CATEGORY_BUDGETS) | {"groceries"}
+    available_categories = {category["name"] for category in category_repository.list_all()} | {"groceries"}
     for category in sorted(available_categories, key=len, reverse=True):
         match = re.search(rf"(?:^|\s)({re.escape(category)})$", description, re.IGNORECASE)
         if match:
@@ -273,7 +277,7 @@ def _learned_value(description: str, field: str) -> Optional[str]:
     description_name = normalized_name(description)
     matches = {
         str(expense[field]).strip()
-        for expense in EXPENSES
+        for expense in expense_repository.list_all()
         if normalized_name(str(expense.get("description") or "")) == description_name
         and expense.get(field)
     }
@@ -308,7 +312,7 @@ def extract_category(description: str) -> Optional[str]:
     if "rent" in lowered:
         return "rent"
 
-    for category in sorted(CATEGORY_BUDGETS, key=len, reverse=True):
+    for category in sorted((item["name"] for item in category_repository.list_all()), key=len, reverse=True):
         if re.search(rf"(?<!\w){re.escape(category)}(?!\w)", lowered):
             return category
 
@@ -320,7 +324,7 @@ def goal_candidates(raw_text: str) -> list[str]:
     lowered = normalized_name(raw_text)
     exact_matches = [
         goal["name"]
-        for goal in GOAL_DEFINITIONS.values()
+        for goal in goal_repository.list_all()
         if normalized_name(goal["name"]) in lowered
     ]
     if exact_matches:
@@ -338,7 +342,7 @@ def goal_candidates(raw_text: str) -> list[str]:
     description_name = normalized_name(raw_text)
     learned_goals = {
         goal
-        for expense in EXPENSES
+        for expense in expense_repository.list_all()
         if normalized_name(str(expense.get("description") or "")) == description_name
         for goal in expense.get("goals", [])
     }
@@ -349,16 +353,19 @@ def expense_suggestions(field: str, query: str = "", description: str = "") -> l
     """Rank known values for future ``m:``, ``c:``, and ``g:`` autocomplete."""
     normalized_field = FIELD_ALIASES.get(field.lower(), field.lower())
     if normalized_field == "merchant":
-        candidates = {str(expense["merchant"]).strip() for expense in EXPENSES if expense.get("merchant")}
+        expenses = expense_repository.list_all()
+        candidates = {str(expense["merchant"]).strip() for expense in expenses if expense.get("merchant")}
     elif normalized_field == "category":
-        candidates = {display_name(category) for category in CATEGORY_BUDGETS}
+        expenses = expense_repository.list_all()
+        candidates = {display_name(category["name"]) for category in category_repository.list_all()}
         candidates.update(
             display_name(str(expense["category"]))
-            for expense in EXPENSES
+            for expense in expenses
             if expense.get("category")
         )
     elif normalized_field == "goal":
-        candidates = {goal["name"] for goal in GOAL_DEFINITIONS.values()}
+        expenses = expense_repository.list_all()
+        candidates = {goal["name"] for goal in goal_repository.list_all()}
     else:
         return []
 
@@ -377,7 +384,7 @@ def expense_suggestions(field: str, query: str = "", description: str = "") -> l
             match_score = SequenceMatcher(None, query_name, candidate_name).ratio()
 
         prior_usage = 0
-        for expense in EXPENSES:
+        for expense in expenses:
             if normalized_name(str(expense.get("description") or "")) != description_name:
                 continue
             values = expense.get("goals", []) if normalized_field == "goal" else [expense.get(normalized_field)]
