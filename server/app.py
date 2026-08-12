@@ -51,19 +51,9 @@ from .routes import (
     set_budget,
     update_expense,
 )
-from .store import (
-    CATEGORY_BUDGETS as _CATEGORY_BUDGETS,
-    DEFAULT_CATEGORY_BUDGETS as _DEFAULT_CATEGORY_BUDGETS,
-    EXPENSES as _EXPENSES,
-    GOAL_DEFINITIONS as _GOAL_DEFINITIONS,
-    reset_in_memory_store,
-)
+from .store import reset_database, reset_in_memory_store
 
 __all__ = [
-    "_CATEGORY_BUDGETS",
-    "_DEFAULT_CATEGORY_BUDGETS",
-    "_EXPENSES",
-    "_GOAL_DEFINITIONS",
     "AskRequest",
     "AskResponse",
     "CreateExpenseRequest",
@@ -100,6 +90,7 @@ __all__ = [
     "list_expenses",
     "parse_expense",
     "remove_budget",
+    "reset_database",
     "reset_in_memory_store",
     "root",
     "set_budget",
@@ -109,6 +100,6 @@ __all__ = [
 app = FastAPI(
     title="Baymax API",
     version="0.1.0",
-    description="In-memory API for the Baymax expense-tracking prototype.",
+    description="SQLite-backed API for the Baymax expense-tracking prototype.",
 )
 app.include_router(router)

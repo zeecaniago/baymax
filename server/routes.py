@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -14,6 +13,7 @@ from .calculations import (
     goal_summary,
     report_payload,
 )
+from .db import DEFAULT_HOUSEHOLD_ID, DEFAULT_USER_ID
 from .models import (
     AskRequest,
     AskResponse,
@@ -31,7 +31,10 @@ from .parsing import (
     normalized_name,
     parse_expense_input,
 )
-from .store import CATEGORY_BUDGETS, EXPENSES
+from .repositories import (
+    categories as category_repository,
+    expenses as expense_repository,
+)
 
 router = APIRouter()
 
@@ -41,7 +44,7 @@ def root() -> dict:
     return {
         "service": "baymax-api",
         "status": "ok",
-        "message": "In-memory expense calculations are running.",
+        "message": "SQLite-backed expense calculations are running.",
     }
 
 
@@ -88,14 +91,11 @@ def get_expense_suggestions(
 @router.post("/expenses")
 def create_expense(payload: CreateExpenseRequest) -> dict:
     category = normalized_name(payload.category) if payload.category else None
-    if category and category not in CATEGORY_BUDGETS:
-        CATEGORY_BUDGETS[category] = None
-
     flags = [normalized_name(flag) for flag in payload.flags]
     expense = {
         "id": f"exp-{uuid4().hex[:8]}",
-        "household_id": "household-1",
-        "user_id": payload.user_id or "user-1",
+        "household_id": DEFAULT_HOUSEHOLD_ID,
+        "user_id": payload.user_id or DEFAULT_USER_ID,
         "amount": payload.amount,
         "description": payload.description,
         "merchant": payload.merchant,
@@ -108,33 +108,26 @@ def create_expense(payload: CreateExpenseRequest) -> dict:
         "notes": payload.notes,
         "date": str(payload.date or datetime.now(timezone.utc).date()),
     }
-    EXPENSES.append(expense)
-    return deepcopy(expense)
+    return expense_repository.create(expense)
 
 
 @router.patch("/expenses/{expense_id}")
 def update_expense(expense_id: str, payload: UpdateExpenseRequest) -> dict:
-    for expense in EXPENSES:
-        if expense["id"] != expense_id:
-            continue
-
-        updates = payload.model_dump(exclude_unset=True)
-        if "date" in updates and updates["date"] is not None:
-            updates["date"] = str(updates["date"])
-        if "category" in updates and updates["category"] is not None:
-            updates["category"] = normalized_name(updates["category"])
-            CATEGORY_BUDGETS.setdefault(updates["category"], None)
-        if "flags" in updates and updates["flags"] is not None:
-            updates["flags"] = [normalized_name(flag) for flag in updates["flags"]]
-            if "budget_treatment" not in updates:
-                updates["budget_treatment"] = (
-                    "excluded" if "one-off" in updates["flags"] else "included"
-                )
-        if "goals" in updates and updates["goals"] is not None:
-            updates["goals"] = [canonical_goal_name(goal) for goal in updates["goals"]]
-        expense.update(updates)
-        return deepcopy(expense)
-    raise HTTPException(status_code=404, detail="Expense not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if "date" in updates and updates["date"] is not None:
+        updates["date"] = str(updates["date"])
+    if "category" in updates and updates["category"] is not None:
+        updates["category"] = normalized_name(updates["category"])
+    if "flags" in updates and updates["flags"] is not None:
+        updates["flags"] = [normalized_name(flag) for flag in updates["flags"]]
+        if "budget_treatment" not in updates:
+            updates["budget_treatment"] = "excluded" if "one-off" in updates["flags"] else "included"
+    if "goals" in updates and updates["goals"] is not None:
+        updates["goals"] = [canonical_goal_name(goal) for goal in updates["goals"]]
+    expense = expense_repository.update(expense_id, updates)
+    if expense is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return expense
 
 
 @router.get("/expenses")
@@ -150,7 +143,7 @@ def list_expenses(
             for expense in expenses
             if expense.get("category") and normalized_name(expense["category"]) == normalized_category
         ]
-    return {"cycle": cycle, "count": len(expenses), "items": deepcopy(expenses)}
+    return {"cycle": cycle, "count": len(expenses), "items": expenses}
 
 
 @router.get("/budgets")
@@ -161,14 +154,15 @@ def get_budgets(cycle: str = Query(default="current")) -> dict:
 @router.put("/budgets/{category_name}")
 def set_budget(category_name: str, payload: SetBudgetRequest) -> dict:
     normalized = normalized_name(category_name)
-    if normalized not in CATEGORY_BUDGETS:
-        CATEGORY_BUDGETS[normalized] = payload.amount
+    existing = category_repository.get(normalized)
+    if existing is None:
+        category_repository.set_budget(normalized, payload.amount)
         action = "created"
         previous_budget = None
     else:
-        previous_budget = CATEGORY_BUDGETS[normalized]
+        previous_budget = existing["budget_amount"]
         action = "set" if previous_budget is None or previous_budget == payload.amount else "updated"
-        CATEGORY_BUDGETS[normalized] = payload.amount
+        category_repository.set_budget(normalized, payload.amount)
 
     category = category_summary(normalized, expenses_for_cycle("current"))
     return {"action": action, "category": category, "previous_budget": previous_budget}
@@ -177,15 +171,16 @@ def set_budget(category_name: str, payload: SetBudgetRequest) -> dict:
 @router.delete("/budgets/{category_name}")
 def remove_budget(category_name: str) -> dict:
     normalized = normalized_name(category_name)
-    if normalized not in CATEGORY_BUDGETS:
+    existing = category_repository.get(normalized)
+    if existing is None:
         return {"action": "missing", "category_name": normalized}
 
-    previous_budget = CATEGORY_BUDGETS[normalized]
+    previous_budget = existing["budget_amount"]
     category = category_summary(normalized, expenses_for_cycle("current"))
     if previous_budget is None:
         return {"action": "already_removed", "category": category}
 
-    CATEGORY_BUDGETS[normalized] = None
+    category_repository.set_budget(normalized, None)
     category = category_summary(normalized, expenses_for_cycle("current"))
     return {"action": "removed", "category": category, "previous_budget": previous_budget}
 

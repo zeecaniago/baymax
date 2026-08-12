@@ -6,7 +6,11 @@ from datetime import date as DateType, datetime, timezone
 from fastapi import HTTPException
 
 from .parsing import normalized_name
-from .store import CATEGORY_BUDGETS, EXPENSES, GOAL_DEFINITIONS
+from .repositories import (
+    categories as category_repository,
+    expenses as expense_repository,
+    goals as goal_repository,
+)
 
 
 def cycle_start(value: DateType) -> DateType:
@@ -46,14 +50,14 @@ def expenses_for_cycle(cycle: str) -> list[dict]:
     start, end_exclusive = cycle_bounds(cycle)
     return [
         expense
-        for expense in EXPENSES
+        for expense in expense_repository.list_all()
         if start <= DateType.fromisoformat(expense["date"]) < end_exclusive
     ]
 
 
 def known_category_names() -> list[str]:
-    names = list(CATEGORY_BUDGETS)
-    for expense in EXPENSES:
+    names = [category["name"] for category in category_repository.list_all()]
+    for expense in expense_repository.list_all():
         category = expense.get("category")
         if category:
             normalized = normalized_name(category)
@@ -78,7 +82,8 @@ def category_summary(name: str, expenses: list[dict]) -> dict:
     spent = round(sum(budget_amounts), 2)
     total_spent = round(sum(amounts), 2)
     excluded_spent = round(total_spent - spent, 2)
-    budget_amount = CATEGORY_BUDGETS.get(normalized)
+    category = category_repository.get(normalized)
+    budget_amount = category["budget_amount"] if category else None
     largest = sorted(matching_expenses, key=lambda expense: float(expense["amount"]), reverse=True)[:3]
     return {
         "name": normalized,
@@ -130,12 +135,12 @@ def goal_entries(goal: dict, expenses: list[dict]) -> list[dict]:
 
 
 def goal_summary(goal_id: str, cycle: str) -> dict:
-    goal = GOAL_DEFINITIONS.get(goal_id)
+    goal = goal_repository.get(goal_id)
     if goal is None:
         raise HTTPException(status_code=404, detail="Goal not found")
 
     cycle_entries = goal_entries(goal, expenses_for_cycle(cycle))
-    all_entries = goal_entries(goal, EXPENSES)
+    all_entries = goal_entries(goal, expense_repository.list_all())
     start, end_exclusive = cycle_bounds(cycle)
     return {
         **deepcopy(goal),
@@ -163,7 +168,7 @@ def report_payload(report_type: str, cycle: str) -> dict:
             "type": report_type,
             "cycle": cycle,
             "cycle_label": budgets["cycle_label"],
-            "items": [goal_summary(goal_id, cycle) for goal_id in GOAL_DEFINITIONS],
+            "items": [goal_summary(goal["id"], cycle) for goal in goal_repository.list_all()],
         }
     if report_type == "flag":
         totals: dict[str, dict] = {}
