@@ -7,3 +7,8 @@ ignore = ["UP045"]
 # Keep the application facade's compatibility re-exports grouped by module.
 combine-as-imports = true
 split-on-trailing-comma = false
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: exercises the FastAPI application with an isolated SQLite database",
+]
