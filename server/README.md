@@ -26,6 +26,8 @@ local development data; Baymax recreates its schema and seed data on startup.
 | --- | --- | --- |
 | `GET` | `/` | Service health response |
 | `POST` | `/expenses/parse` | Parse natural-language expense text into a draft |
+| `POST` | `/intents/interpret` | Convert supported language into a validated semantic intent |
+| `POST` | `/intents/execute` | Resolve and deterministically execute a validated intent |
 | `GET` | `/expenses/suggestions` | Suggest known merchants, categories, or goals for a named field |
 | `POST` | `/expenses` | Save an expense |
 | `PATCH` | `/expenses/{expense_id}` | Correct a saved expense |
@@ -36,6 +38,21 @@ local development data; Baymax recreates its schema and seed data on startup.
 | `GET` | `/goals/{goal_id}/summary` | Get goal-related spending for a cycle |
 | `POST` | `/ask` | Answer supported natural-language spending questions |
 | `GET` | `/reports` | Get category, goal, or flag reports |
+
+## Language intent boundary
+
+The rule-based interpreter and any future LLM interpreter share the Pydantic
+contract in `server/intents.py`. Intent payloads contain user-facing references
+such as `"groceries"` or `"the kid goal"`; `server/entity_resolution.py`
+resolves those references against household data before
+`server/intent_executor.py` may read or change application state. Financial
+calculations and database identifiers are never delegated to the interpreter.
+
+Budget-changing intents require confirmation. Call `/intents/execute` with
+`confirmed: true` only after the client has obtained that confirmation;
+rapid expense logging and correction retain their existing immediate-write
+behavior. Ambiguous and missing references return a clarification result
+rather than being guessed.
 
 All read endpoints use the current billing cycle by default: the 26th of one
 month through the 25th of the next. Provide an ISO date with `cycle`, such as
