@@ -21,6 +21,25 @@ class BaymaxApiClient:
     def parse_expense(self, raw_text: str) -> dict[str, Any]:
         return self._post_json("/expenses/parse", {"raw_text": raw_text})
 
+    def interpret(self, raw_text: str) -> dict[str, Any]:
+        return self._post_json("/intents/interpret", {"raw_text": raw_text})
+
+    def execute_intent(
+        self,
+        intent: dict[str, Any],
+        *,
+        confirmed: bool = False,
+        last_expense_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._post_json(
+            "/intents/execute",
+            {
+                "intent": intent,
+                "confirmed": confirmed,
+                "last_expense_id": last_expense_id,
+            },
+        )
+
     def get_budgets(self) -> dict[str, Any]:
         return self._get_json("/budgets")
 

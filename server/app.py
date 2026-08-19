@@ -17,6 +17,20 @@ from .calculations import (
     next_cycle_start as _next_cycle_start,
     report_payload as _report_payload,
 )
+from .intents import (
+    BaymaxIntent,
+    CorrectExpenseIntent,
+    InterpretIntentRequest,
+    LogExpenseIntent,
+    QuerySpendingIntent,
+    RemoveBudgetIntent,
+    ReportIntent,
+    SetBudgetIntent,
+    ShowHistoryIntent,
+    SuggestBudgetIntent,
+    UnknownIntent,
+    validate_intent,
+)
 from .models import (
     AskRequest,
     AskResponse,
@@ -39,10 +53,12 @@ from .parsing import (
 from .routes import (
     ask_question,
     create_expense,
+    execute_language,
     get_budgets,
     get_expense_suggestions,
     get_goal_summary,
     get_reports,
+    interpret_language,
     list_expenses,
     parse_expense,
     remove_budget,
@@ -51,15 +67,27 @@ from .routes import (
     set_budget,
     update_expense,
 )
+from .rule_interpreter import interpret_intent
 from .store import reset_database, reset_in_memory_store
 
 __all__ = [
     "AskRequest",
     "AskResponse",
+    "BaymaxIntent",
+    "CorrectExpenseIntent",
     "CreateExpenseRequest",
     "ExpenseDraft",
+    "InterpretIntentRequest",
+    "LogExpenseIntent",
     "ParseExpenseRequest",
+    "QuerySpendingIntent",
+    "RemoveBudgetIntent",
+    "ReportIntent",
+    "SetBudgetIntent",
     "SetBudgetRequest",
+    "ShowHistoryIntent",
+    "SuggestBudgetIntent",
+    "UnknownIntent",
     "UpdateExpenseRequest",
     "_budget_payload",
     "_canonical_goal_name",
@@ -83,10 +111,13 @@ __all__ = [
     "app",
     "ask_question",
     "create_expense",
+    "execute_language",
     "get_budgets",
     "get_expense_suggestions",
     "get_goal_summary",
     "get_reports",
+    "interpret_intent",
+    "interpret_language",
     "list_expenses",
     "parse_expense",
     "remove_budget",
@@ -95,6 +126,7 @@ __all__ = [
     "root",
     "set_budget",
     "update_expense",
+    "validate_intent",
 ]
 
 app = FastAPI(
