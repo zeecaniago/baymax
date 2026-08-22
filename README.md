@@ -1,50 +1,50 @@
-## Current Prototype Quickstart
+# Baymax
 
-The repo currently contains:
+Baymax is a conversational household budget tracker. You log purchases in plain language, optionally attach merchants, categories, goals, and flags, then ask about spending and budgets for the current billing cycle (26th of one month through the 25th of the next).
 
-- a SQLite-backed FastAPI server in `server/`
-- a Python REPL-style CLI in `cli/`
+This repository is a **Python prototype**: a SQLite-backed FastAPI server plus a REPL-style CLI. There is no mobile app, web app, Postgres database, or LLM integration in the tree today.
 
-The server persists expenses, corrections, categories, budgets, flags, and goal links in SQLite. By default the database is `data/baymax.db`, so data survives server restarts. Set `BAYMAX_DB_PATH` to use another location, which is particularly useful for isolated tests:
+## What is implemented
 
-```bash
-BAYMAX_DB_PATH=/tmp/baymax-dev.db uvicorn server.app:app --reload
-```
+| Piece | Role |
+| --- | --- |
+| `server/` | FastAPI API: rule-based parsing, expense CRUD, budgets, goals, reports, and a small `/ask` surface |
+| `cli/` | Interactive Python REPL that calls the API (stdlib HTTP client; no third-party CLI deps) |
+| `data/` | Default SQLite location (`data/baymax.db`; gitignored `*.db` files) |
+| `tests/` | Unit and FastAPI integration tests |
 
-To reset local development data, stop the server and delete `data/baymax.db`; the schema and default categories/goals are recreated on the next start.
+On first start the server creates the schema and seeds default categories (`groceries` $400, `transport` $150, `eating out` with no budget) and several goals (for example “Raise a strong, resilient kid”, “Emergency Fund”). There is no authentication yet; rows use default household/user ids.
+
+Parsing and Q&A are **rule-based** (`server/rule_interpreter.py` and related modules), not Claude or another LLM. An intent contract in `server/intents.py` is shared so a future LLM interpreter could plug in later without changing execution.
+
+## Quickstart
 
 ### 1. Install server dependencies
+
+From the repository root:
 
 ```bash
 python3 -m pip install -r server/requirements.txt
 ```
 
-The CLI currently uses only the Python standard library, so it does not need a separate install step.
-
-### Development checks
-
-Install the development tools and enable the repository's Git hooks once per checkout:
-
-```bash
-python3 -m pip install -r requirements-dev.txt
-pre-commit install
-```
-
-The pre-commit hook runs `python3 -m ruff check` against staged Python files and blocks a commit when lint errors are found. You can run the same check manually with:
-
-```bash
-python3 -m ruff check cli server tests
-```
+The CLI uses only the Python standard library, so it does not need a separate install. Run commands from the repo root so `python3 -m cli` can import `server` helpers.
 
 ### 2. Start the server
-
-In one terminal:
 
 ```bash
 uvicorn server.app:app --reload
 ```
 
-That starts the API on `http://127.0.0.1:8000`.
+API: `http://127.0.0.1:8000`  
+OpenAPI docs: `http://127.0.0.1:8000/docs`
+
+By default the database is `data/baymax.db`. Override with `BAYMAX_DB_PATH` (useful for isolated runs and tests):
+
+```bash
+BAYMAX_DB_PATH=/tmp/baymax-dev.db uvicorn server.app:app --reload
+```
+
+To reset local data, stop the server and delete the database file; schema and seed data are recreated on the next start.
 
 ### 3. Start the CLI
 
@@ -54,15 +54,17 @@ In a second terminal, from the repo root:
 python3 -m cli
 ```
 
-The CLI talks to `http://127.0.0.1:8000` by default. To point it somewhere else:
+Default API URL is `http://127.0.0.1:8000`. Override with:
 
 ```bash
 BAYMAX_API_URL=http://127.0.0.1:9000 python3 -m cli
 ```
 
-### 4. Try a few commands
+Type `exit` or `quit` (or Ctrl-C / Ctrl-D) to leave the REPL.
 
-Expense logging goes through the server:
+### 4. Example session
+
+Amounts and report totals depend on what you have logged in the running database. Formatting should look like this:
 
 ```text
 > $45 groceries
@@ -75,10 +77,10 @@ Expense logging goes through the server:
 ✓ $12.00 — coffee  !one-off · excluded from budget
 
 > $50 karate class, kid goal
-✓ $50.00 — karate class  #Kids  → Raise a strong, resilient kid
+✓ $50.00 — karate class  → Raise a strong, resilient kid
 ```
 
-Ambiguous goal example:
+Ambiguous goals prompt for a choice:
 
 ```text
 > $40 books, learning goal
@@ -87,69 +89,26 @@ Which goal?
   2. Get promoted this year
   0. Don't link to a goal
 > 1
-✓ $40.00 — books  #Kids  → Raise a strong, resilient kid
+✓ $40.00 — books  → Raise a strong, resilient kid
 ```
 
-Server-backed read flows (the exact figures reflect the expenses logged in the running server):
+Named fields (`m:`/`merchant:`, `c:`/`category:`, `g:`/`goal:`) are case-insensitive, may appear in any order, and override inference. A purchase needs only an amount and description; category and merchant are optional. The `one-off` flag keeps the expense in history but excludes it from category budget spend.
 
-```text
-> report groceries
-Groceries — Jun 26–Jul 25
-  $403 of $400 (101%) · 15 expenses · avg $26.87
-  Largest: Costco $91, Whole Foods $64, Trader Joe's $58
-
-> report goal resilient kid
-Raise a strong, resilient kid — this cycle
-  $90 across 2 expenses
-  karate class  $50
-  books  $40
-
-> how much on groceries this cycle?
-Groceries: $403.00 of $400.00 (101%) — 15 expenses
-
-> what's left in eating out?
-Eating Out doesn't have a budget this cycle.
-
-> what did we spend supporting the resilient kid goal this cycle?
-$90.00 of goal-related spending across 2 expenses — karate class $50, books $40
-```
-
-Every purchase can be saved with only an amount and description. Baymax infers familiar categories such as groceries, but single-word descriptions like `coffee` and `education` do not create categories or budgets on their own.
-
-Add precision with comma-delimited named fields. `m:`/`merchant:` identifies where it was purchased, `c:`/`category:` identifies the spending type, and `g:`/`goal:` identifies why the expense mattered. Fields are case-insensitive, may be ordered freely, and explicit values override inference:
-
-```text
-> $55 groceries, merchant: Amazon
-✓ $55.00 — groceries  @Amazon  #Groceries
-
-> $15 coffee, m: Fresh Street, c: Groceries, one-off
-✓ $15.00 — coffee  @Fresh Street  #Groceries  !one-off · excluded from budget
-
-> $45 coffee, goal: Healthy Lifestyle, category: Groceries
-✓ $45.00 — coffee  #Groceries  → Healthy Lifestyle
-```
-
-One-off purchases remain in spending history but do not reduce their category's budget balance.
-
-Corrections also go through the server:
+Corrections and budgets go through the server:
 
 ```text
 > $18 target
-✓ $18.00 — target  #Shopping
+✓ $18.00 — target
 
 > no, that one's for the emergency fund goal
-✓ updated — $18.00 — target  #Shopping  → Emergency Fund
+✓ updated — $18.00 — target  → Emergency Fund
 
 > $45 groceries
 ✓ $45.00 — groceries  #Groceries
 
 > oops, 54 not 45
 ✓ updated — $54.00 — groceries  #Groceries
-```
 
-Budget writes also go through the server:
-
-```text
 > set groceries budget to $600
 ✓ [Groceries] budget updated: $600/cycle (was $400/cycle)
 
@@ -157,223 +116,98 @@ Budget writes also go through the server:
 ✓ [Groceries] — budget removed (was $600/cycle)
 ```
 
-Commands that still work locally inside the REPL:
+Reads recompute from SQLite (figures change as you log and correct expenses, and survive server restarts):
 
 ```text
+> report groceries
+> report goal resilient kid
+> how much on groceries this cycle?
+> what's left in eating out?
+> what did we spend supporting the resilient kid goal this cycle?
+```
+
+Session-only CLI state (not persisted on the server):
+
+```text
+> suggest a groceries budget
+> no
 
 > history
-1  report groceries
-2  set groceries budget to $600
-3  history
 ```
 
-### 5. Smoke-test the current workflows
+### Behavior split
 
-Use the README as a manual test script while the server is running:
+- **Server:** expense parse/create/correct, reports, goal summaries, budget reads/writes, `/ask` answers, intent interpret/execute.
+- **CLI:** REPL UX, goal chooser prompts, budget “suggest … / yes|no” confirmation flow, and in-session `history`.
 
-1. Parse and save a simple expense:
-   `> $45 groceries`
-   Expect: `✓ $45.00 — groceries  #Groceries`
-2. Parse with a flag:
-   `> $12 coffee, one-off`
-   Expect: `✓ $12.00 — coffee  !one-off · excluded from budget`
-3. Exercise goal disambiguation:
-   `> $40 books, learning goal`
-   `> 1`
-   Expect the numbered chooser, then `✓ $40.00 — books  #Kids  → Raise a strong, resilient kid`
-4. Exercise correction flows:
-   `> $18 target`
-   `> no, that one's for the emergency fund goal`
-   Expect a `✓ updated — ... → Emergency Fund` line
-   `> $45 groceries`
-   `> oops, 54 not 45`
-   Expect a `✓ updated — $54.00 — groceries  #Groceries` line
-5. Exercise server-backed reads:
-   `> report groceries`
-   `> report goal resilient kid`
-   `> how much on groceries this cycle?`
-   `> what's left in eating out?`
-   `> what did we spend supporting the resilient kid goal this cycle?`
-6. Exercise server-backed budget writes:
-   `> set groceries budget to $600`
-   `> remove groceries budget`
-7. Exercise local-only prompt state:
-   `> suggest a groceries budget`
-   `> no`
-8. Exercise local-only commands:
-   `> history`
+## Environment variables
 
-Read endpoints calculate from persisted SQLite data. Logging or correcting an expense immediately changes later reports and balances, and those changes remain after a server restart.
+| Name | Used by | Purpose |
+| --- | --- | --- |
+| `BAYMAX_DB_PATH` | server | SQLite file path (default `data/baymax.db`) |
+| `BAYMAX_API_URL` | CLI | API base URL (default `http://127.0.0.1:8000`) |
 
-### Current behavior split
+## API surface
 
-- Expense parsing, creation, correction, reports, goal summaries, budget reads, budget writes, and question answering go through the server.
-- Budget recommendation prompts and most multi-step REPL state still live in the CLI for now.
-- Server-backed reads recompute from newly logged and corrected expenses while the server is running.
-- Server data persists across process restarts in SQLite.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | Health |
+| `POST` | `/expenses/parse` | Parse expense text into a draft |
+| `POST` | `/intents/interpret` | Map supported language to a typed intent |
+| `POST` | `/intents/execute` | Execute a validated intent (budget writes need `confirmed: true`) |
+| `GET` | `/expenses/suggestions` | Suggest merchants, categories, or goals |
+| `POST` | `/expenses` | Save an expense |
+| `PATCH` | `/expenses/{expense_id}` | Correct a saved expense |
+| `GET` | `/expenses` | List expenses for a cycle (optional `category`) |
+| `GET` | `/budgets` | Category budgets and balances |
+| `PUT` | `/budgets/{category_name}` | Create or update a category budget |
+| `DELETE` | `/budgets/{category_name}` | Remove a category budget |
+| `GET` | `/goals/{goal_id}/summary` | Goal-related spending for a cycle |
+| `POST` | `/ask` | Answer supported spending questions |
+| `GET` | `/reports` | Category, goal, or flag reports (`type=category\|goal\|flag`) |
 
-## 1. System Overview
+Cycle query parameter defaults to `current`. Pass an ISO date (for example `?cycle=2026-07-01`) to select the cycle containing that date.
 
-```
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│ React Native │   │  React Web  │   │     CLI      │
-│ (iOS/Android)│   │  (browser)  │   │ (Node, TTY)  │
-└──────┬───────┘   └──────┬──────┘   └──────┬───────┘
-       │                  │                  │
-       └──────────┬───────┴──────────┬───────┘
-                   │      imports     │
-                   ▼                  ▼
-         ┌─────────────────────────────────┐
-         │        Shared Core Package        │
-         │  (TS: types, API client,          │
-         │   formatting, input-grammar       │
-         │   helpers)                        │
-         └───────────────┬───────────────────┘
-                         │  HTTPS
-                         ▼
-         ┌───────────────────────┐
-         │      API Server         │
-         │  (Node/Express or       │
-         │   FastAPI)               │
-         │                          │
-         │  - Auth (household)      │
-         │  - Expense CRUD          │
-         │  - Budget/Goal logic      │
-         │    (cycle & budget math   │
-         │     live server-side)     │
-         │  - Report queries         │
-         └──────┬─────────┬─────────┘
-                │         │
-                ▼         ▼
-       ┌────────────┐  ┌──────────────┐
-       │  Postgres   │  │  Claude API   │
-       │  (data)     │  │  (NL parsing, │
-       │             │  │   Q&A)        │
-       └────────────┘  └──────────────┘
+More detail and curl examples: [`server/README.md`](server/README.md). CLI interaction notes: [`cli/README.md`](cli/README.md).
+
+## Project layout
+
+```text
+cli/                 REPL client (app facade, command modules, HTTP client)
+server/              FastAPI app, routes, parsing, calculations, SQLite + repositories
+data/                Default DB directory (`.gitkeep`; `*.db` ignored)
+tests/               Unit tests and `tests/integration/` FastAPI tests
+.github/workflows/   CI: ruff + pytest (+ coverage artifacts); release tags on merge
+pyproject.toml       Ruff / pytest config
+requirements-dev.txt pytest, httpx, pre-commit, ruff, …
 ```
 
-One backend serves all three clients. Cycle/budget math lives **only** on the server now — with three clients, letting each one compute it locally would risk drift (e.g. CLI and mobile disagreeing on remaining balance). The core package now carries just types, the API client, and formatting — not business logic.
+## Development checks
 
----
-
-## 2. Tech Stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| Mobile | React Native (Expo) | One codebase → both app stores; Expo simplifies build/deploy for a solo dev |
-| Web | React (Vite) | Shares types/logic with mobile via the core package |
-| CLI | Node + commander (or oclif) | Same language as core package/backend — no third language to maintain; a REPL mode can mirror the chat-thread paradigm in text |
-| Shared logic | TypeScript package (`core/`) | Cycle math, budget math, API client, types — written once |
-| Backend | Node/Express + TypeScript (recommended) | Same language as frontend/core — one language across the whole stack, less context-switching for a solo build |
-| Database | Postgres (via Supabase or Railway) | Relational model fits the domain (expenses ↔ goals ↔ flags are all many-to-many) |
-| Auth | Supabase Auth (or simple JWT) | Two-user household; no need to build auth from scratch |
-| NLP parsing & Q&A | Claude API | Parses free-text input into structured JSON; answers natural-language questions against report data |
-| Push/notifications (later) | Expo push | For budget-overrun alerts, if you want them outside the app |
-
-If you'd rather avoid Node on the backend, FastAPI (Python) is a fine substitute — you already have Python fluency from the prototype. The tradeoff is just losing type-sharing between backend and core package.
-
----
-
-## 3. Data Model (Postgres)
-
-```sql
-households
-  id, created_at
-
-users
-  id, household_id (FK), name, email, created_at
-
--- Free-form, app learns the recurring set. Budget is optional per row.
-categories
-  id, household_id (FK), name, budget_amount (nullable), created_at
-
--- Extensible tag system — one row per flag *type*, not hardcoded enum
-flags
-  id, household_id (FK), name (e.g. "one-off"), created_at
-
--- Open-ended by default; target is optional
-goals
-  id, household_id (FK), name, created_at
-
-billing_cycles
-  id, household_id (FK), start_date, end_date
-  -- generated/derived, not user-created; 26th–25th, always recurring
-
-expenses
-  id, household_id (FK), user_id (FK), cycle_id (FK),
-  amount, description, category_id (nullable FK),
-  notes (nullable), date, created_at
-
--- many-to-many junctions
-expense_flags
-  expense_id (FK), flag_id (FK)
-
-expense_goals
-  expense_id (FK), goal_id (FK)
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m pip install -r server/requirements.txt
+pre-commit install
 ```
 
-**Design notes:**
-- `category_id`, `budget_amount`, goal links, flags are all nullable/optional — "no category" and "no budget" are real states, not migrations-in-waiting.
-- `billing_cycles` can be computed on the fly (26th–25th) rather than stored, but storing them makes reporting queries and remaining-balance math simpler — recommend storing, generated lazily when first referenced.
-- New flags = new row in `flags`, no schema change. Same for goals and categories.
+Pre-commit runs `python3 -m ruff check` on staged Python files. Manually:
 
----
-
-## 4. API Surface (sketch)
-
-```
-POST   /expenses/parse        → Claude parses raw text → structured draft (not yet saved)
-POST   /expenses               → save a parsed/confirmed expense
-PATCH  /expenses/:id           → correction (rollback-and-redo)
-GET    /expenses?cycle=current&category=groceries
-
-GET    /budgets                → all categories with budgets + live remaining balance
-GET    /goals/:id/summary?cycle=current
-GET    /expenses/suggestions?field=m|c|g&q=...&description=...
-
-POST   /ask                    → natural-language question → Claude reads relevant
-                                  data (via tool-call-style queries) → plain-language answer
-
-GET    /reports?type=category|goal|flag&cycle=current
+```bash
+python3 -m ruff check cli server tests
+python3 -m pytest
 ```
 
-`/expenses/parse` and `/ask` are the two endpoints that call out to Claude. Everything else is standard CRUD/query.
+CI (Python 3.12) installs `requirements-dev.txt`, `cli/requirements.txt`, and `server/requirements.txt`, then runs the same lint and a coverage-enabled pytest pass.
 
----
+## Not yet / roadmap
 
-## 5. NLP Parsing Flow
+The lower half of older README drafts described a multi-client product (React Native, React web, shared TypeScript `core/`, Node CLI, Postgres, Claude for NL, household auth). **None of that is in this repository today.** Plausible next steps implied by the current code and docs:
 
-1. User types: `"$45 groceries, one-off"`
-2. App sends raw text + household's known categories/flags/goals (as context) to `/expenses/parse`
-3. Server calls Claude with a system prompt describing your input grammar, returns strict JSON:
-   ```json
-   { "amount": 45, "description": "coffee", "merchant": "Fresh Street",
-     "category": "Groceries", "goal": "Healthy Lifestyle",
-     "explicit_fields": ["merchant", "category", "goal"] }
-   ```
-4. Server returns this draft to the client
-5. Client shows the confirmation (per your "optimistic execute" model) and calls `POST /expenses` to persist
+- Additional clients against the same HTTP API
+- Stronger auth / real multi-user households
+- Optional LLM interpreter behind the existing intent contract
+- Richer persistence (for example Postgres) if SQLite stops being enough
 
-Corrections follow the same path: re-parse, rollback-and-redo, no confirmation prompt.
+## License
 
----
-
-## 6. Build Sequencing (solo dev)
-
-1. **Data model + core package** — Postgres schema, types, API client as pure TS with tests. No UI yet.
-2. **Parsing service** — Claude integration for `/expenses/parse`, validated against real example inputs (including messy/ambiguous ones).
-3. **API server** — CRUD endpoints, wired to the schema above.
-4. **CLI first** — build the CLI against the real API before either GUI. It's the cheapest surface (no app-store friction, no layout work), it mirrors your existing Python REPL prototype's interaction model, and it's the fastest way to validate parsing reliability and the "optimistic execute" correction flow with real day-to-day use.
-5. **Web, then mobile** — reuse core package; should be materially faster since parsing/math/types/API client are already proven by the CLI.
-6. **Reports + goals view + Q&A endpoint** — layer on last, since they depend on real logged data to be meaningful to test against.
-
-This order front-loads the riskiest, most novel part (parsing reliability + server-side cycle/budget math) and validates it in the lowest-friction interface before investing in any GUI work.
-
----
-
-## 7. Open Questions
-
-- Node/Express vs. FastAPI for backend — leaning Node for type-sharing, but Python fluency from the prototype is a real factor.
-- Supabase (bundled auth + Postgres) vs. separate Postgres host + custom auth — Supabase saves setup time but adds a vendor dependency.
-- Whether `billing_cycles` should be a stored table (recommended above) or computed on demand.
-- CLI interaction mode: a persistent REPL (matching your Python prototype and the chat-thread paradigm) vs. one-shot commands (`app log "$45 groceries"`, `app budgets`). A REPL fits the product philosophy better; one-shot commands are more scriptable/composable. Worth deciding once you're building the CLI, since it doesn't block earlier steps.
+MIT — see [`LICENSE`](LICENSE).
